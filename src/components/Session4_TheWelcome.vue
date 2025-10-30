@@ -59,16 +59,12 @@ onMounted(() => {
 })
 console.log(postsData.value)
 
-const deleteDocument = (): any => {
-  if (postsData.value.length === 0) {
-    console.warn('Aucun document à supprimer')
-    return
-  }
-
-  const docToDelete = postsData.value[0]
-
+const deleteDocument = (id: string): any => {
   storage.value
-    .remove(docToDelete)
+    .get(id)
+    .then((document) => {
+      return storage.value.remove(document)
+    })
     .then(() => {
       console.log('Document supprimé')
       fetchData()
@@ -81,10 +77,10 @@ const deleteDocument = (): any => {
 
 <template>
   <h1>Fetch Data</h1>
+  <button @click="addDocument">Ajouter un nouveau document</button>
   <article v-for="post in postsData" v-bind:key="(post as any).id">
     <h2>{{ post.title }}</h2>
     <p>{{ post.post_content }}</p>
+    <button @click="deleteDocument(post._id)">Supprimer un document</button>
   </article>
-  <button @click="addDocument">Ajouter un nouveau document</button>
-  <button @click="deleteDocument">Supprimer un document</button>
 </template>
