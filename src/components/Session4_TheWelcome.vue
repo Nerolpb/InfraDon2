@@ -58,13 +58,10 @@ onMounted(() => {
   fetchData()
 })
 console.log(postsData.value)
-
-document.addEventListener('click', () => {
-  addDocument()
-})
 </script>
 
 <template>
+  <button @click="addDocument">Ajouter un nouveau document</button>
   <h1>Fetch Data</h1>
   <article v-for="post in postsData" v-bind:key="(post as any).id">
     <h2>{{ post.title }}</h2>
