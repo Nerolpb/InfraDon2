@@ -73,6 +73,22 @@ const deleteDocument = (id: string): any => {
       console.error('=> Erreur lors de la suppression du document :', error)
     })
 }
+
+const updateDocument = (id: string, updatedData: any): any => {
+  storage.value
+    .get(id)
+    .then((document: any) => {
+      const updatedDocument = { ...document, ...updatedData }
+      return storage.value.put(updatedDocument)
+    })
+    .then(() => {
+      console.log('Document mis à jour')
+      fetchData()
+    })
+    .catch((error: any) => {
+      console.error('=> Erreur lors de la mise à jour du document :', error)
+    })
+}
 </script>
 
 <template>
@@ -82,5 +98,8 @@ const deleteDocument = (id: string): any => {
     <h2>{{ post.title }}</h2>
     <p>{{ post.post_content }}</p>
     <button @click="deleteDocument(post._id)">Supprimer un document</button>
+    <button @click="updateDocument(post._id, { title: 'New (Modified)' })">
+      Mettre à jour un document
+    </button>
   </article>
 </template>
