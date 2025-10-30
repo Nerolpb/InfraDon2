@@ -10,9 +10,7 @@ declare interface Post {
   }
 }
 
-// Référence à la base de données
 const storage = ref()
-// Données stockées
 const postsData = ref<Post[]>([])
 
 // Initialisation de la base de données

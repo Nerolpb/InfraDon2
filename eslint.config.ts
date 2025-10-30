@@ -13,9 +13,6 @@ export default defineConfigWithVueTs(
   {
     name: 'app/files-to-lint',
     files: ['**/*.{ts,mts,tsx,vue}'],
-  },
-
-  {
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
     },
