@@ -12,20 +12,28 @@ declare interface Post {
 
 const storage = ref()
 const postsData = ref<Post[]>([])
+const localDB = ref()
+const remoteDB = ref()
 
-// Initialisation de la base de données
 const initDatabase = () => {
-  console.log('=> Connexion à la base de données')
-  const db = new PouchDB('http://Nero:Penafiel29Snaky25@localhost:5984/infradon2')
-  if (db) {
-    console.log('Connecté à la collection : ' + db?.name)
-    storage.value = db
-  } else {
-    console.warn('Echec lors de la connexion à la base de données')
+  console.log('=> Initialisation des bases PouchDB')
+
+  localDB.value = new PouchDB('infradon_local')
+  storage.value = localDB.value
+  remoteDB.value = new PouchDB('http://Nero:Penafiel29Snaky25@localhost:5984/infradon2')
+
+  if (localDB.value && remoteDB.value) {
+    console.log('Bases locale et distante prêtes.')
   }
 }
 
-// Récupération des données
+const replicateDataLocal = () => {
+  localDB.value.replicate(remoteDB.value, { live: true, retry: true }).on('change', (info: any) => {
+    console.log('=> Réplication locale - changement détecté :', info)
+    fetchData()
+  })
+}
+
 const fetchData = (): any => {
   storage.value
     .allDocs({ include_docs: true })
