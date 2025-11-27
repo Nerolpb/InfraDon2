@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import PouchDB from 'pouchdb'
+import findPlugin from 'pouchdb-find'
+PouchDB.plugin(findPlugin)
 
 declare interface Post {
   _id: string
@@ -9,6 +11,7 @@ declare interface Post {
   post_content: string
   attributes?: {
     creation_date: any
+    category?: string
   }
 }
 
@@ -17,8 +20,12 @@ const postsData = ref<Post[]>([])
 const localDB = ref()
 const remoteDB = ref()
 const syncStatus = ref('')
+const isOnline = ref(true)
+const syncHandler = ref<PouchDB.Replication.Sync<Post> | null>(null)
+const searchQuery = ref('')
+const filteredPosts = ref<Post[]>([])
 
-const initDatabase = () => {
+const initDatabase = async () => {
   console.log('=> Initialisation des bases PouchDB')
 
   localDB.value = new PouchDB('infradon_local')
@@ -28,6 +35,9 @@ const initDatabase = () => {
   if (localDB.value && remoteDB.value) {
     console.log('Bases locale et distante prêtes.')
   }
+
+  // Création de l'index sur la catégorie
+  await createIndex()
 }
 
 const fetchData = (): any => {
@@ -140,28 +150,148 @@ const updateDocument = (id: string, updatedData: any): any => {
       console.error('=> Erreur lors de la mise à jour du document :', error)
     })
 }
+
+// ==========================================
+// MODULE 1: RÉPLICATION & SIMULATION OFFLINE
+// ==========================================
+
+const toggleOnlineOffline = () => {
+  isOnline.value = !isOnline.value
+
+  if (isOnline.value) {
+    // Passer en mode Online : démarrer la synchronisation live
+    console.log('🟢 Mode ONLINE : Synchronisation active')
+    syncStatus.value = 'En ligne - Synchronisation active'
+    startLiveSync()
+  } else {
+    // Passer en mode Offline : arrêter la synchronisation
+    console.log('🔴 Mode OFFLINE : Synchronisation arrêtée')
+    syncStatus.value = 'Hors ligne - Modifications en local uniquement'
+    stopLiveSync()
+  }
+}
+
+const startLiveSync = () => {
+  if (syncHandler.value) {
+    console.log('Synchronisation déjà active')
+    return
+  }
+
+  syncHandler.value = localDB.value
+    .sync(remoteDB.value, {
+      live: true,
+      retry: true,
+    })
+    .on('change', (info: any) => {
+      console.log('🔄 Synchro : changement détecté', info)
+      syncStatus.value = `Synchronisation (${info.direction})...`
+      fetchData()
+      if (searchQuery.value) {
+        performSearch()
+      }
+    })
+    .on('paused', () => {
+      console.log('⏸️  Synchro en pause (à jour)')
+      syncStatus.value = 'En ligne - À jour'
+    })
+    .on('active', () => {
+      console.log('▶️  Synchro active')
+      syncStatus.value = 'En ligne - Synchronisation en cours'
+    })
+    .on('error', (err: any) => {
+      console.error('❌ Erreur de synchro', err)
+      syncStatus.value = 'Erreur de synchronisation'
+    })
+}
+
+const stopLiveSync = () => {
+  if (syncHandler.value) {
+    syncHandler.value.cancel()
+    syncHandler.value = null
+    console.log('Synchronisation arrêtée')
+  }
+}
 </script>
 
 <template>
-  <h1>Fetch Data</h1>
+  <div class="container">
+    <h1>PouchDB - Gestion avancée</h1>
 
-  <button @click="syncCollections">Synchroniser (Push/Pull)</button>
-  <p>
-    <em>{{ syncStatus }}</em>
-  </p>
+    <!-- MODULE 1: Toggle Online/Offline -->
+    <section class="sync-section">
+      <h2>📡 Mode de connexion</h2>
+      <button @click="toggleOnlineOffline" :class="{ online: isOnline, offline: !isOnline }">
+        {{ isOnline ? '🟢 EN LIGNE' : '🔴 HORS LIGNE' }}
+      </button>
+      <p class="status">
+        <em>{{ syncStatus }}</em>
+      </p>
+      <button @click="syncCollections" v-if="!isOnline">
+        Synchroniser manuellement (Push/Pull)
+      </button>
+    </section>
 
-  <hr />
+    <hr />
 
-  <button @click="addDocument">Ajouter un nouveau document (local)</button>
+    <!-- MODULE 2: Data Factory -->
+    <section class="data-factory-section">
+      <h2>📦 Génération de données</h2>
+      <button @click="generateFakeData(50)">Générer 50 documents</button>
+      <button @click="generateFakeData(100)">Générer 100 documents</button>
+    </section>
 
-  <hr />
+    <hr />
 
-  <article v-for="post in postsData" v-bind:key="post._id">
-    <h2>{{ post.title }}</h2>
-    <p>{{ post.post_content }}</p>
-    <button @click="deleteDocument(post._id)">Supprimer (local)</button>
-    <button @click="updateDocument(post._id, { title: post.title + ' (Modifié)' })">
-      Mettre à jour (local)
-    </button>
-  </article>
+    <!-- MODULE 2: Recherche par catégorie -->
+    <section class="search-section">
+      <h2>🔍 Recherche par catégorie</h2>
+      <input
+        v-model="searchQuery"
+        @input="performSearch"
+        type="text"
+        placeholder="Rechercher une catégorie (Tech, Science, Sport, Culture, Politique)"
+      />
+      <p v-if="searchQuery">
+        Résultats trouvés : <strong>{{ filteredPosts.length }}</strong>
+      </p>
+    </section>
+
+    <hr />
+
+    <!-- Ajouter un document -->
+    <section class="actions-section">
+      <h2>➕ Actions</h2>
+      <button @click="addDocument">Ajouter un nouveau document (local)</button>
+    </section>
+
+    <hr />
+
+    <!-- Affichage des documents -->
+    <section class="posts-section">
+      <h2>📄 Documents ({{ searchQuery ? 'Filtrés' : 'Tous' }})</h2>
+      <div class="posts-grid">
+        <article
+          v-for="post in searchQuery ? filteredPosts : postsData"
+          v-bind:key="post._id"
+          class="post-card"
+        >
+          <h3>{{ post.title }}</h3>
+          <p class="category" v-if="post.attributes?.category">🏷️ {{ post.attributes.category }}</p>
+          <p class="content">{{ post.post_content }}</p>
+          <p class="date" v-if="post.attributes?.creation_date">
+            📅 {{ new Date(post.attributes.creation_date).toLocaleString() }}
+          </p>
+          <div class="actions">
+            <button
+              class="btn-update"
+              @click="updateDocument(post._id, { title: post.title + ' (Modifié)' })"
+            >
+              ✏️ Modifier
+            </button>
+            <button class="btn-delete" @click="deleteDocument(post._id)">🗑️ Supprimer</button>
+          </div>
+        </article>
+      </div>
+    </section>
+  </div>
 </template>
