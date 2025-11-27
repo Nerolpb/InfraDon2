@@ -267,7 +267,7 @@ const performSearch = async () => {
 
 <template>
   <div class="container">
-    <h1>PouchDB - Gestion avancée</h1>
+    <h1>InfraDon2 - nosql</h1>
 
     <section class="sync-section">
       <h2>📡 Mode de connexion</h2>
@@ -309,7 +309,7 @@ const performSearch = async () => {
 
     <section class="actions-section">
       <h2>➕ Actions</h2>
-      <button @click="addDocument">Ajouter un nouveau document (local)</button>
+      <button @click="addDocument">Ajouter un nouveau document</button>
     </section>
 
     <hr />
@@ -343,3 +343,5 @@ const performSearch = async () => {
     </section>
   </div>
 </template>
+
+<style src="./styles.css" scoped></style>
