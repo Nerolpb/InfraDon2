@@ -53,11 +53,15 @@ const fetchData = (): any => {
 }
 
 const addDocument = (): any => {
+  const categories = ['Tech', 'Science', 'Sport', 'Culture', 'Politique']
+  const randomCategory = categories[Math.floor(Math.random() * categories.length)]
+
   const newPost: Partial<Post> = {
     title: 'Nouveau post (local)',
     post_content: 'Contenu ajouté localement...',
     attributes: {
       creation_date: new Date().toISOString(),
+      category: randomCategory,
     },
   }
 
