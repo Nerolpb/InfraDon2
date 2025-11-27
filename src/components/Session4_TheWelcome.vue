@@ -52,7 +52,6 @@ const fetchData = (): any => {
     })
 }
 
-// ÉTAPE 3: Ajouter un document (en local)
 const addDocument = (): any => {
   const newPost: Partial<Post> = {
     title: 'Nouveau post (local)',
@@ -109,7 +108,6 @@ onMounted(() => {
     .on('complete', () => {
       console.log('Réplication initiale (pull) terminée.')
       syncStatus.value = 'Données locales à jour.'
-      // Maintenant que les données locales sont à jour, on rafraîchit la UI
       fetchData()
     })
     .on('error', (err: any) => {
@@ -137,8 +135,6 @@ const updateDocument = (id: string, updatedData: any): any => {
   storage.value
     .get(id)
     .then((document: any) => {
-      // L'objet `updatedData` doit inclure ce que vous voulez changer
-      // Par exemple: { title: 'New (Modified)' }
       const updatedDocument = { ...document, ...updatedData }
       return storage.value.put(updatedDocument)
     })
@@ -151,20 +147,14 @@ const updateDocument = (id: string, updatedData: any): any => {
     })
 }
 
-// ==========================================
-// MODULE 1: RÉPLICATION & SIMULATION OFFLINE
-// ==========================================
-
 const toggleOnlineOffline = () => {
   isOnline.value = !isOnline.value
 
   if (isOnline.value) {
-    // Passer en mode Online : démarrer la synchronisation live
     console.log('🟢 Mode ONLINE : Synchronisation active')
     syncStatus.value = 'En ligne - Synchronisation active'
     startLiveSync()
   } else {
-    // Passer en mode Offline : arrêter la synchronisation
     console.log('🔴 Mode OFFLINE : Synchronisation arrêtée')
     syncStatus.value = 'Hors ligne - Modifications en local uniquement'
     stopLiveSync()
@@ -211,13 +201,74 @@ const stopLiveSync = () => {
     console.log('Synchronisation arrêtée')
   }
 }
+
+const createIndex = async () => {
+  try {
+    await localDB.value.createIndex({
+      index: {
+        fields: ['attributes.category'],
+      },
+    })
+    console.log('✅ Index créé sur attributes.category')
+  } catch (error) {
+    console.error("❌ Erreur lors de la création de l'index :", error)
+  }
+}
+
+const generateFakeData = async (count: number = 50) => {
+  const categories = ['Tech', 'Science', 'Sport', 'Culture', 'Politique']
+
+  console.log(`📦 Génération de ${count} documents factices...`)
+
+  const documents: Partial<Post>[] = []
+
+  for (let i = 0; i < count; i++) {
+    documents.push({
+      title: `Document factice #${i + 1}`,
+      post_content: `Contenu du document numéro ${i + 1} généré automatiquement.`,
+      attributes: {
+        creation_date: new Date().toISOString(),
+        category: categories[Math.floor(Math.random() * categories.length)],
+      },
+    })
+  }
+
+  try {
+    const result = await localDB.value.bulkDocs(documents)
+    console.log(`✅ ${count} documents insérés avec succès`, result)
+    fetchData()
+  } catch (error) {
+    console.error("❌ Erreur lors de l'insertion des documents :", error)
+  }
+}
+
+const performSearch = async () => {
+  if (!searchQuery.value.trim()) {
+    filteredPosts.value = []
+    return
+  }
+
+  try {
+    const result = await localDB.value.find({
+      selector: {
+        'attributes.category': {
+          $eq: searchQuery.value,
+        },
+      },
+    })
+
+    filteredPosts.value = result.docs as Post[]
+    console.log(`🔍 Recherche pour "${searchQuery.value}" :`, result.docs)
+  } catch (error) {
+    console.error('❌ Erreur lors de la recherche :', error)
+  }
+}
 </script>
 
 <template>
   <div class="container">
     <h1>PouchDB - Gestion avancée</h1>
 
-    <!-- MODULE 1: Toggle Online/Offline -->
     <section class="sync-section">
       <h2>📡 Mode de connexion</h2>
       <button @click="toggleOnlineOffline" :class="{ online: isOnline, offline: !isOnline }">
@@ -233,7 +284,6 @@ const stopLiveSync = () => {
 
     <hr />
 
-    <!-- MODULE 2: Data Factory -->
     <section class="data-factory-section">
       <h2>📦 Génération de données</h2>
       <button @click="generateFakeData(50)">Générer 50 documents</button>
@@ -242,7 +292,6 @@ const stopLiveSync = () => {
 
     <hr />
 
-    <!-- MODULE 2: Recherche par catégorie -->
     <section class="search-section">
       <h2>🔍 Recherche par catégorie</h2>
       <input
@@ -258,7 +307,6 @@ const stopLiveSync = () => {
 
     <hr />
 
-    <!-- Ajouter un document -->
     <section class="actions-section">
       <h2>➕ Actions</h2>
       <button @click="addDocument">Ajouter un nouveau document (local)</button>
