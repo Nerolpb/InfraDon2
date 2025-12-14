@@ -286,6 +286,59 @@ const sortByLikes = async () => {
     alert("Erreur de tri. Avez-vous bien recréé l'index (étape précédente) ?")
   }
 }
+
+const newCommentText = ref<{ [key: string]: string }>({})
+
+const likePost = async (id: string) => {
+  try {
+    const doc = await localDB.value.get(id)
+    doc.likes = (doc.likes || 0) + 1
+
+    await localDB.value.put(doc)
+
+    if (searchQuery.value) performSearch()
+    else fetchData()
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+const addCommentToPost = async (id: string) => {
+  const text = newCommentText.value[id]
+  if (!text || !text.trim()) return
+
+  try {
+    const doc = await localDB.value.get(id)
+
+    if (!doc.comments) doc.comments = []
+
+    doc.comments.push({
+      text: text,
+      date: new Date().toISOString(),
+    })
+
+    await localDB.value.put(doc)
+
+    newCommentText.value[id] = ''
+    fetchData()
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+const deleteComment = async (postId: string, commentIndex: number) => {
+  try {
+    const doc = await localDB.value.get(postId)
+
+    if (doc.comments) {
+      doc.comments.splice(commentIndex, 1)
+      await localDB.value.put(doc)
+      fetchData()
+    }
+  } catch (error) {
+    console.error(error)
+  }
+}
 </script>
 
 <template>
@@ -339,15 +392,47 @@ const sortByLikes = async () => {
           :key="post._id"
           class="post-card"
         >
-          <h3>{{ post.title }}</h3>
-          <small v-if="post.attributes?.category" class="cat-tag">{{
-            post.attributes.category
-          }}</small>
+          <div style="display: flex; justify-content: space-between; align-items: center">
+            <h3>{{ post.title }}</h3>
+            <span v-if="post.attributes?.category" class="cat-tag">{{
+              post.attributes.category
+            }}</span>
+          </div>
+
           <p>{{ post.post_content }}</p>
 
-          <div style="margin: 10px 0; font-size: 0.9em; color: #555">
-            <strong>Popularité :</strong> {{ post.likes || 0 }} ❤️ <br />
-            <strong>Commentaires :</strong> {{ post.comments?.length || 0 }} 💬
+          <div class="likes-section">
+            <button @click="likePost(post._id)" class="btn-like">
+              👍 J'aime ({{ post.likes || 0 }})
+            </button>
+          </div>
+
+          <div class="comments-section">
+            <h4>💬 Commentaires ({{ post.comments?.length || 0 }})</h4>
+
+            <ul>
+              <li v-for="(comment, index) in post.comments" :key="index" class="comment-item">
+                <div>
+                  <small>📅 {{ new Date(comment.date).toLocaleTimeString() }}</small> :
+                  <span>{{ comment.text }}</span>
+                </div>
+                <span
+                  class="delete-comment-btn"
+                  @click="deleteComment(post._id, index)"
+                  title="Supprimer"
+                  >❌</span
+                >
+              </li>
+            </ul>
+
+            <div class="add-comment-box">
+              <input
+                v-model="newCommentText[post._id]"
+                placeholder="Écrire un commentaire..."
+                @keyup.enter="addCommentToPost(post._id)"
+              />
+              <button @click="addCommentToPost(post._id)">Envoyer</button>
+            </div>
           </div>
 
           <div class="actions">
@@ -355,9 +440,9 @@ const sortByLikes = async () => {
               class="btn-update"
               @click="updateDocument(post._id, { title: post.title + ' (Modifié)' })"
             >
-              ✏️ Modifier
+              ✏️ Modifier Post
             </button>
-            <button class="btn-delete" @click="deleteDocument(post._id)">🗑️ Supprimer</button>
+            <button class="btn-delete" @click="deleteDocument(post._id)">🗑️ Supprimer Post</button>
           </div>
         </article>
       </div>
@@ -433,5 +518,69 @@ button {
 
 hr {
   margin: 20px 0;
+}
+
+.likes-section {
+  margin: 10px 0;
+}
+.btn-like {
+  background-color: #e3f2fd;
+  border: 1px solid #2196f3;
+  color: #0d47a1;
+  border-radius: 20px;
+  padding: 5px 15px;
+  font-weight: bold;
+}
+.btn-like:hover {
+  background-color: #bbdefb;
+}
+
+.comments-section {
+  background-color: #f8f9fa;
+  padding: 10px;
+  border-radius: 8px;
+  margin-top: 10px;
+  border: 1px solid #e9ecef;
+}
+.comments-section h4 {
+  margin-top: 0;
+  font-size: 1em;
+  color: #495057;
+}
+
+.comments-section ul {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0;
+}
+.comment-item {
+  border-bottom: 1px solid #dee2e6;
+  padding: 5px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9em;
+}
+
+.delete-comment-btn {
+  cursor: pointer;
+  opacity: 0.6;
+  margin-left: 10px;
+}
+.delete-comment-btn:hover {
+  opacity: 1;
+  transform: scale(1.2);
+}
+
+.add-comment-box {
+  display: flex;
+  gap: 5px;
+  margin-top: 10px;
+}
+.add-comment-box input {
+  flex-grow: 1;
+  padding: 8px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
 }
 </style>
