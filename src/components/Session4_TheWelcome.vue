@@ -268,6 +268,24 @@ const deleteAllDocuments = async () => {
     console.error('❌ Erreur lors de la suppression totale :', error)
   }
 }
+
+const sortByLikes = async () => {
+  console.log('Tri par likes')
+
+  try {
+    const result = await localDB.value.find({
+      selector: {
+        likes: { $gte: 0 },
+      },
+      sort: [{ likes: 'desc' }],
+    })
+
+    postsData.value = result.docs as Post[]
+  } catch (error) {
+    console.error('Erreur lors du tri DB :', error)
+    alert("Erreur de tri. Avez-vous bien recréé l'index (étape précédente) ?")
+  }
+}
 </script>
 
 <template>
@@ -300,6 +318,10 @@ const deleteAllDocuments = async () => {
         placeholder="Rechercher catégorie..."
       />
     </section>
+
+    <div style="margin-top: 10px; display: flex; gap: 10px">
+      <button @click="sortByLikes">🔥 Trier par Popularité (DB)</button>
+    </div>
 
     <hr />
 
@@ -407,5 +429,9 @@ button {
 
 .btn-danger:hover {
   background-color: #c82333;
+}
+
+hr {
+  margin: 20px 0;
 }
 </style>
