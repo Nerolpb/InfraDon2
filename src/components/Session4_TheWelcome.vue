@@ -5,11 +5,18 @@ import findPlugin from 'pouchdb-find'
 
 PouchDB.plugin(findPlugin)
 
+declare interface Comment {
+  text: string
+  date: string
+}
+
 declare interface Post {
   _id: string
   _rev?: string
   title: string
   post_content: string
+  likes: number
+  comments: Comment[]
   attributes?: {
     creation_date: any
     category?: string
@@ -80,6 +87,8 @@ const addDocument = async () => {
     _id: new Date().toISOString(),
     title: 'Nouveau post (local)',
     post_content: 'Contenu ajouté localement...',
+    likes: 0, // Init à 0
+    comments: [], // Init vide
     attributes: {
       creation_date: new Date().toISOString(),
       category: randomCategory,
@@ -192,6 +201,8 @@ const generateFakeData = async (count: number) => {
       _id: new Date().getTime() + '_' + i,
       title: `Doc factice #${i + 1}`,
       post_content: `Contenu généré...`,
+      likes: Math.floor(Math.random() * 100), // Nombre aléatoire de likes (0-99)
+      comments: [], // Tableau vide pour l'instant
       attributes: {
         creation_date: new Date().toISOString(),
         category: categories[Math.floor(Math.random() * categories.length)],
@@ -304,6 +315,11 @@ const deleteAllDocuments = async () => {
           }}</small>
           <p>{{ post.post_content }}</p>
 
+          <div style="margin: 10px 0; font-size: 0.9em; color: #555">
+            <strong>Popularité :</strong> {{ post.likes || 0 }} ❤️ <br />
+            <strong>Commentaires :</strong> {{ post.comments?.length || 0 }} 💬
+          </div>
+
           <div class="actions">
             <button
               class="btn-update"
@@ -350,13 +366,13 @@ const deleteAllDocuments = async () => {
   padding: 15px;
   margin-bottom: 10px;
   border-radius: 8px;
-  background-color: #fff; /* Assure un fond blanc pour la carte */
-  color: #333; /* Assure un texte sombre par défaut */
+  background-color: #fff;
+  color: #333;
 }
 
 .cat-tag {
-  background: #e0e0e0; /* Gris un peu plus soutenu */
-  color: #2c3e50; /* PROBLÈME RÉSOLU ICI : On force le texte en gris foncé */
+  background: #e0e0e0;
+  color: #2c3e50;
   padding: 2px 6px;
   border-radius: 4px;
   font-weight: bold;
@@ -375,10 +391,10 @@ button {
 }
 
 .btn-danger {
-  background-color: #dc3545; /* Rouge */
+  background-color: #dc3545;
   color: white;
   border: 1px solid #c82333;
-  margin-left: 10px; /* Petit espace avec le bouton d'à côté */
+  margin-left: 10px;
 }
 
 .btn-danger:hover {
