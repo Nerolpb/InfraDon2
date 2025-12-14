@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, onUnmounted } from 'vue'
 import PouchDB from 'pouchdb'
 import findPlugin from 'pouchdb-find'
+
 PouchDB.plugin(findPlugin)
 
 declare interface Post {
@@ -15,194 +16,27 @@ declare interface Post {
   }
 }
 
-const storage = ref()
 const postsData = ref<Post[]>([])
 const localDB = ref()
 const remoteDB = ref()
-const syncStatus = ref('')
+const syncStatus = ref('Déconnecté')
 const isOnline = ref(true)
 const syncHandler = ref<PouchDB.Replication.Sync<Post> | null>(null)
 const searchQuery = ref('')
 const filteredPosts = ref<Post[]>([])
 
-const initDatabase = async () => {
-  console.log('=> Initialisation des bases PouchDB')
+const REMOTE_DB_URL = 'http://Nero:Penafiel29Snaky25@localhost:5984/infradon2'
+const LOCAL_DB_NAME = 'infradon_local'
 
-  localDB.value = new PouchDB('infradon_local')
-  storage.value = localDB.value
-  remoteDB.value = new PouchDB('http://Nero:Penafiel29Snaky25@localhost:5984/infradon2')
+const initApp = async () => {
+  localDB.value = new PouchDB(LOCAL_DB_NAME)
+  remoteDB.value = new PouchDB(REMOTE_DB_URL)
 
-  if (localDB.value && remoteDB.value) {
-    console.log('Bases locale et distante prêtes.')
-  }
-
-  // Création de l'index sur la catégorie
   await createIndex()
-}
-
-const fetchData = (): any => {
-  storage.value
-    .allDocs({ include_docs: true })
-    .then((result: any) => {
-      console.log('=> Données locales récupérées :', result.rows)
-      postsData.value = result.rows.map((row: any) => row.doc)
-    })
-    .catch((error: any) => {
-      console.error('=> Erreur lors de la récupération des données locales :', error)
-    })
-}
-
-const addDocument = (): any => {
-  const categories = ['Tech', 'Science', 'Sport', 'Culture', 'Politique']
-  const randomCategory = categories[Math.floor(Math.random() * categories.length)]
-
-  const newPost: Partial<Post> = {
-    title: 'Nouveau post (local)',
-    post_content: 'Contenu ajouté localement...',
-    attributes: {
-      creation_date: new Date().toISOString(),
-      category: randomCategory,
-    },
-  }
-
-  storage.value
-    .post(newPost)
-    .then(() => {
-      console.log('Document ajouté en local')
-      fetchData()
-    })
-    .catch((error: any) => {
-      console.error("=> Erreur lors de l'ajout du document :", error)
-    })
-}
-
-const syncCollections = () => {
-  syncStatus.value = 'Synchronisation en cours...'
-  console.log('Lancement de la synchronisation bi-directionnelle...')
-
-  localDB.value
-    .sync(remoteDB.value, { retry: true })
-    .on('change', (info: any) => {
-      console.log('Synchro : changement détecté', info)
-      syncStatus.value = `Changement détecté (${info.direction})...`
-    })
-    .on('complete', (info: any) => {
-      syncStatus.value = 'Synchronisation terminée !'
-      console.log('Synchro bi-directionnelle terminée', info)
-
-      fetchData()
-    })
-    .on('error', (err: any) => {
-      syncStatus.value = 'Erreur de synchronisation.'
-      console.error('Erreur de synchro', err)
-    })
-}
-
-onMounted(() => {
-  console.log('=> Composant initialisé')
-  initDatabase()
-
-  fetchData()
-
-  console.log('Lancement de la réplication initiale (pull)...')
-  syncStatus.value = 'Récupération des données distantes...'
-
-  remoteDB.value.replicate
-    .to(localDB.value)
-    .on('complete', () => {
-      console.log('Réplication initiale (pull) terminée.')
-      syncStatus.value = 'Données locales à jour.'
-      fetchData()
-    })
-    .on('error', (err: any) => {
-      console.error('Erreur de réplication (pull)', err)
-      syncStatus.value = 'Erreur de récupération des données.'
-    })
-})
-
-const deleteDocument = (id: string): any => {
-  storage.value
-    .get(id)
-    .then((document: any) => {
-      return storage.value.remove(document)
-    })
-    .then(() => {
-      console.log('Document supprimé localement')
-      fetchData()
-    })
-    .catch((error: any) => {
-      console.error('=> Erreur lors de la suppression du document :', error)
-    })
-}
-
-const updateDocument = (id: string, updatedData: any): any => {
-  storage.value
-    .get(id)
-    .then((document: any) => {
-      const updatedDocument = { ...document, ...updatedData }
-      return storage.value.put(updatedDocument)
-    })
-    .then(() => {
-      console.log('Document mis à jour localement')
-      fetchData()
-    })
-    .catch((error: any) => {
-      console.error('=> Erreur lors de la mise à jour du document :', error)
-    })
-}
-
-const toggleOnlineOffline = () => {
-  isOnline.value = !isOnline.value
+  await fetchData()
 
   if (isOnline.value) {
-    console.log('🟢 Mode ONLINE : Synchronisation active')
-    syncStatus.value = 'En ligne - Synchronisation active'
     startLiveSync()
-  } else {
-    console.log('🔴 Mode OFFLINE : Synchronisation arrêtée')
-    syncStatus.value = 'Hors ligne - Modifications en local uniquement'
-    stopLiveSync()
-  }
-}
-
-const startLiveSync = () => {
-  if (syncHandler.value) {
-    console.log('Synchronisation déjà active')
-    return
-  }
-
-  syncHandler.value = localDB.value
-    .sync(remoteDB.value, {
-      live: true,
-      retry: true,
-    })
-    .on('change', (info: any) => {
-      console.log('🔄 Synchro : changement détecté', info)
-      syncStatus.value = `Synchronisation (${info.direction})...`
-      fetchData()
-      if (searchQuery.value) {
-        performSearch()
-      }
-    })
-    .on('paused', () => {
-      console.log('⏸️  Synchro en pause (à jour)')
-      syncStatus.value = 'En ligne - À jour'
-    })
-    .on('active', () => {
-      console.log('▶️  Synchro active')
-      syncStatus.value = 'En ligne - Synchronisation en cours'
-    })
-    .on('error', (err: any) => {
-      console.error('❌ Erreur de synchro', err)
-      syncStatus.value = 'Erreur de synchronisation'
-    })
-}
-
-const stopLiveSync = () => {
-  if (syncHandler.value) {
-    syncHandler.value.cancel()
-    syncHandler.value = null
-    console.log('Synchronisation arrêtée')
   }
 }
 
@@ -211,38 +45,123 @@ const createIndex = async () => {
     await localDB.value.createIndex({
       index: {
         fields: ['attributes.category'],
+        ddoc: 'idx-category',
       },
     })
-    console.log('✅ Index créé sur attributes.category')
   } catch (error) {
-    console.error("❌ Erreur lors de la création de l'index :", error)
+    console.error(error)
   }
 }
 
-const generateFakeData = async (count: number = 50) => {
+const fetchData = async () => {
+  if (!localDB.value) return
+
+  try {
+    const result = await localDB.value.allDocs({ include_docs: true, descending: true })
+    const docs = result.rows
+      .map((row: any) => row.doc)
+      .filter((doc: any) => !doc._id.startsWith('_design/'))
+
+    postsData.value = docs
+
+    if (searchQuery.value) {
+      performSearch()
+    }
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+const addDocument = async () => {
   const categories = ['Tech', 'Science', 'Sport', 'Culture', 'Politique']
+  const randomCategory = categories[Math.floor(Math.random() * categories.length)]
 
-  console.log(`📦 Génération de ${count} documents factices...`)
-
-  const documents: Partial<Post>[] = []
-
-  for (let i = 0; i < count; i++) {
-    documents.push({
-      title: `Document factice #${i + 1}`,
-      post_content: `Contenu du document numéro ${i + 1} généré automatiquement.`,
-      attributes: {
-        creation_date: new Date().toISOString(),
-        category: categories[Math.floor(Math.random() * categories.length)],
-      },
-    })
+  const newPost: Partial<Post> = {
+    _id: new Date().toISOString(),
+    title: 'Nouveau post (local)',
+    post_content: 'Contenu ajouté localement...',
+    attributes: {
+      creation_date: new Date().toISOString(),
+      category: randomCategory,
+    },
   }
 
   try {
-    const result = await localDB.value.bulkDocs(documents)
-    console.log(`✅ ${count} documents insérés avec succès`, result)
-    fetchData()
+    await localDB.value.put(newPost)
+    await fetchData()
   } catch (error) {
-    console.error("❌ Erreur lors de l'insertion des documents :", error)
+    console.error(error)
+  }
+}
+
+const updateDocument = async (id: string, updatedData: any) => {
+  try {
+    const doc = await localDB.value.get(id)
+    const updatedDocument = { ...doc, ...updatedData }
+    await localDB.value.put(updatedDocument)
+    await fetchData()
+  } catch (error: any) {
+    if (error.status === 409) {
+      alert('Conflit détecté lors de la mise à jour.')
+    }
+    console.error(error)
+  }
+}
+
+const deleteDocument = async (id: string) => {
+  try {
+    const doc = await localDB.value.get(id)
+    await localDB.value.remove(doc)
+    await fetchData()
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+const startLiveSync = () => {
+  if (syncHandler.value) return
+
+  syncStatus.value = 'Connexion...'
+
+  syncHandler.value = localDB.value
+    .sync(remoteDB.value, {
+      live: true,
+      retry: true,
+    })
+    .on('change', (info: any) => {
+      syncStatus.value = `🔄 Synchro (${info.direction})`
+      fetchData()
+    })
+    .on('paused', (err: any) => {
+      if (!err) {
+        syncStatus.value = '🟢 En ligne (À jour)'
+      } else {
+        syncStatus.value = '⚠️ En attente de connexion...'
+      }
+    })
+    .on('active', () => {
+      syncStatus.value = '📡 Transmission en cours...'
+    })
+    .on('error', (err: any) => {
+      console.error(err)
+      syncStatus.value = '🔴 Erreur de synchronisation'
+    })
+}
+
+const stopLiveSync = () => {
+  if (syncHandler.value) {
+    syncHandler.value.cancel()
+    syncHandler.value = null
+    syncStatus.value = '⏸️ Synchronisation arrêtée'
+  }
+}
+
+const toggleOnlineOffline = () => {
+  isOnline.value = !isOnline.value
+  if (isOnline.value) {
+    startLiveSync()
+  } else {
+    stopLiveSync()
   }
 }
 
@@ -255,18 +174,46 @@ const performSearch = async () => {
   try {
     const result = await localDB.value.find({
       selector: {
-        'attributes.category': {
-          $eq: searchQuery.value,
-        },
+        'attributes.category': { $eq: searchQuery.value },
       },
     })
-
     filteredPosts.value = result.docs as Post[]
-    console.log(`🔍 Recherche pour "${searchQuery.value}" :`, result.docs)
   } catch (error) {
-    console.error('❌ Erreur lors de la recherche :', error)
+    console.error(error)
   }
 }
+
+const generateFakeData = async (count: number) => {
+  const categories = ['Tech', 'Science', 'Sport', 'Culture', 'Politique']
+  const documents: any[] = []
+
+  for (let i = 0; i < count; i++) {
+    documents.push({
+      _id: new Date().getTime() + '_' + i,
+      title: `Doc factice #${i + 1}`,
+      post_content: `Contenu généré...`,
+      attributes: {
+        creation_date: new Date().toISOString(),
+        category: categories[Math.floor(Math.random() * categories.length)],
+      },
+    })
+  }
+
+  try {
+    await localDB.value.bulkDocs(documents)
+    fetchData()
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+onMounted(() => {
+  initApp()
+})
+
+onUnmounted(() => {
+  stopLiveSync()
+})
 </script>
 
 <template>
@@ -274,65 +221,51 @@ const performSearch = async () => {
     <h1>InfraDon2 - nosql</h1>
 
     <section class="sync-section">
-      <h2>📡 Mode de connexion</h2>
       <button @click="toggleOnlineOffline" :class="{ online: isOnline, offline: !isOnline }">
         {{ isOnline ? '🟢 EN LIGNE' : '🔴 HORS LIGNE' }}
       </button>
       <p class="status">
-        <em>{{ syncStatus }}</em>
+        Etat: <strong>{{ syncStatus }}</strong>
       </p>
-      <button @click="syncCollections" v-if="!isOnline">
-        Synchroniser manuellement (Push/Pull)
-      </button>
     </section>
 
     <hr />
 
     <section class="data-factory-section">
-      <h2>📦 Génération de données</h2>
-      <button @click="generateFakeData(50)">Générer 50 documents</button>
-      <button @click="generateFakeData(100)">Générer 100 documents</button>
+      <button @click="generateFakeData(10)">+ 10 Docs</button>
+      <button @click="generateFakeData(50)">+ 50 Docs</button>
     </section>
 
     <hr />
 
     <section class="search-section">
-      <h2>🔍 Recherche par catégorie</h2>
       <input
         v-model="searchQuery"
         @input="performSearch"
         type="text"
-        placeholder="Rechercher une catégorie (Tech, Science, Sport, Culture, Politique)"
+        placeholder="Rechercher catégorie..."
       />
-      <p v-if="searchQuery">
-        Résultats trouvés : <strong>{{ filteredPosts.length }}</strong>
-      </p>
     </section>
 
     <hr />
 
     <section class="actions-section">
-      <h2>➕ Actions</h2>
       <button @click="addDocument">Ajouter un nouveau document</button>
     </section>
 
-    <hr />
-
-    <!-- Affichage des documents -->
     <section class="posts-section">
-      <h2>📄 Documents ({{ searchQuery ? 'Filtrés' : 'Tous' }})</h2>
       <div class="posts-grid">
         <article
           v-for="post in searchQuery ? filteredPosts : postsData"
-          v-bind:key="post._id"
+          :key="post._id"
           class="post-card"
         >
           <h3>{{ post.title }}</h3>
-          <p class="category" v-if="post.attributes?.category">🏷️ {{ post.attributes.category }}</p>
-          <p class="content">{{ post.post_content }}</p>
-          <p class="date" v-if="post.attributes?.creation_date">
-            📅 {{ new Date(post.attributes.creation_date).toLocaleString() }}
-          </p>
+          <small v-if="post.attributes?.category" class="cat-tag">{{
+            post.attributes.category
+          }}</small>
+          <p>{{ post.post_content }}</p>
+
           <div class="actions">
             <button
               class="btn-update"
@@ -348,4 +281,42 @@ const performSearch = async () => {
   </div>
 </template>
 
-<style src="./styles.css" scoped></style>
+<style scoped>
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: sans-serif;
+}
+.online {
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+.offline {
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+.status {
+  margin-top: 10px;
+  font-size: 0.9em;
+  color: #666;
+}
+.post-card {
+  border: 1px solid #ddd;
+  padding: 15px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+}
+.cat-tag {
+  background: #eee;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 10px;
+}
+</style>
