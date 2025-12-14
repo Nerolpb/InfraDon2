@@ -288,35 +288,51 @@ onUnmounted(() => {
   padding: 20px;
   font-family: sans-serif;
 }
+
 .online {
   background-color: #d4edda;
   color: #155724;
   border: 1px solid #c3e6cb;
 }
+
 .offline {
   background-color: #f8d7da;
   color: #721c24;
   border: 1px solid #f5c6cb;
 }
+
 .status {
   margin-top: 10px;
   font-size: 0.9em;
   color: #666;
 }
+
 .post-card {
   border: 1px solid #ddd;
   padding: 15px;
   margin-bottom: 10px;
   border-radius: 8px;
+  background-color: #fff; /* Assure un fond blanc pour la carte */
+  color: #333; /* Assure un texte sombre par défaut */
 }
+
 .cat-tag {
-  background: #eee;
+  background: #e0e0e0; /* Gris un peu plus soutenu */
+  color: #2c3e50; /* PROBLÈME RÉSOLU ICI : On force le texte en gris foncé */
   padding: 2px 6px;
   border-radius: 4px;
+  font-weight: bold;
+  font-size: 0.85em;
 }
+
 .actions {
   margin-top: 10px;
   display: flex;
   gap: 10px;
+}
+
+button {
+  cursor: pointer;
+  padding: 5px 10px;
 }
 </style>
