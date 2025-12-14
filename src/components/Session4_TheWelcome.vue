@@ -39,7 +39,7 @@ const initApp = async () => {
   localDB.value = new PouchDB(LOCAL_DB_NAME)
   remoteDB.value = new PouchDB(REMOTE_DB_URL)
 
-  await createIndex()
+  await createIndexes()
   await fetchData()
 
   if (isOnline.value) {
@@ -47,7 +47,7 @@ const initApp = async () => {
   }
 }
 
-const createIndex = async () => {
+const createIndexes = async () => {
   try {
     await localDB.value.createIndex({
       index: {
@@ -55,8 +55,16 @@ const createIndex = async () => {
         ddoc: 'idx-category',
       },
     })
+
+    await localDB.value.createIndex({
+      index: {
+        fields: ['likes'],
+        ddoc: 'idx-likes',
+      },
+    })
+    console.log('✅ Index créés : Catégorie et Likes')
   } catch (error) {
-    console.error(error)
+    console.error('❌ Erreur lors de la création des index :', error)
   }
 }
 
