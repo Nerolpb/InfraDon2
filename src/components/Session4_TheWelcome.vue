@@ -214,6 +214,41 @@ onMounted(() => {
 onUnmounted(() => {
   stopLiveSync()
 })
+
+const deleteAllDocuments = async () => {
+  if (
+    !confirm(
+      '⚠️ Êtes-vous sûr de vouloir TOUT supprimer ? Cette action est irréversible (et se répercutera sur le serveur si connecté).',
+    )
+  ) {
+    return
+  }
+
+  try {
+    const result = await localDB.value.allDocs({ include_docs: false })
+
+    const docsToDelete = result.rows
+      .filter((row: any) => !row.id.startsWith('_design/'))
+      .map((row: any) => ({
+        _id: row.id,
+        _rev: row.value.rev,
+        _deleted: true,
+      }))
+
+    if (docsToDelete.length === 0) {
+      alert('La base est déjà vide.')
+      return
+    }
+
+    await localDB.value.bulkDocs(docsToDelete)
+
+    console.log(`✅ ${docsToDelete.length} documents supprimés.`)
+
+    await fetchData()
+  } catch (error) {
+    console.error('❌ Erreur lors de la suppression totale :', error)
+  }
+}
 </script>
 
 <template>
@@ -250,7 +285,10 @@ onUnmounted(() => {
     <hr />
 
     <section class="actions-section">
-      <button @click="addDocument">Ajouter un nouveau document</button>
+      <div class="action-buttons">
+        <button @click="addDocument">Ajouter un nouveau document</button>
+        <button class="btn-danger" @click="deleteAllDocuments">☠️ Tout supprimer</button>
+      </div>
     </section>
 
     <section class="posts-section">
@@ -334,5 +372,16 @@ onUnmounted(() => {
 button {
   cursor: pointer;
   padding: 5px 10px;
+}
+
+.btn-danger {
+  background-color: #dc3545; /* Rouge */
+  color: white;
+  border: 1px solid #c82333;
+  margin-left: 10px; /* Petit espace avec le bouton d'à côté */
+}
+
+.btn-danger:hover {
+  background-color: #c82333;
 }
 </style>
