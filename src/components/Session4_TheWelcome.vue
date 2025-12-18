@@ -416,334 +416,549 @@ const deleteComment = async (postId: string, commentIndex: number) => {
 </script>
 
 <template>
-  <div class="container">
-    <h1>InfraDon2 - nosql</h1>
+  <div class="app-container">
+    <header class="main-header">
+      <h1>InfraDon2 <span class="subtitle">NoSQL Edition</span></h1>
 
-    <section class="sync-section">
-      <button @click="toggleOnlineOffline" :class="{ online: isOnline, offline: !isOnline }">
-        {{ isOnline ? '🟢 EN LIGNE' : '🔴 HORS LIGNE' }}
-      </button>
-      <p class="status">
-        Etat: <strong>{{ syncStatus }}</strong>
-      </p>
+      <div class="sync-status">
+        <button
+          @click="toggleOnlineOffline"
+          :class="['status-badge', isOnline ? 'online' : 'offline']"
+        >
+          {{ isOnline ? '🟢 Connecté' : '🔴 Déconnecté' }}
+        </button>
+        <span class="status-text">{{ syncStatus }}</span>
+      </div>
+    </header>
+
+    <section class="global-actions">
+      <button class="btn btn-danger-outline" @click="deleteAllDocuments">☠️ Tout supprimer</button>
     </section>
 
-    <hr />
+    <section class="panel categories-panel">
+      <h2>📂 Gestion des Catégories</h2>
 
-    <section class="categories-section">
-      <h2>📂 Collection 2 : Catégories</h2>
-
-      <div class="add-cat-box">
+      <div class="input-group">
         <input
           v-model="newCategoryName"
+          class="form-input"
           placeholder="Nouvelle catégorie (ex: Gaming)"
           @keyup.enter="addCategory"
         />
-        <button @click="addCategory">Ajouter</button>
+        <button class="btn btn-primary" @click="addCategory">Ajouter</button>
       </div>
 
       <div class="tags-container">
-        <span v-for="cat in categoriesData" :key="cat._id" class="cat-chip">
-          {{ cat.name }}
-          <button @click="deleteCategory(cat)" class="btn-x">×</button>
-        </span>
-        <em v-if="categoriesData.length === 0">Aucune catégorie. Créez-en une pour commencer !</em>
+        <transition-group name="list">
+          <span v-for="cat in categoriesData" :key="cat._id" class="cat-chip">
+            {{ cat.name }}
+            <button @click="deleteCategory(cat)" class="btn-x">×</button>
+          </span>
+        </transition-group>
+        <p v-if="categoriesData.length === 0" class="empty-state">
+          Aucune catégorie. Créez-en une pour commencer !
+        </p>
       </div>
     </section>
 
-    <hr />
-
-    <section class="data-factory-section">
-      <button @click="generateFakeData(10)">+ 10 Docs</button>
-      <button @click="generateFakeData(50)">+ 50 Docs</button>
-    </section>
-
-    <hr />
-
-    <section class="search-section">
-      <input
-        v-model="searchQuery"
-        @input="performSearch"
-        type="text"
-        placeholder="Rechercher catégorie..."
-      />
-    </section>
-
-    <div style="margin-top: 10px; display: flex; gap: 10px">
-      <button @click="sortByLikes">🔥 Trier par Popularité (DB)</button>
-      <button @click="fetchData">📅 Trier par Date (Défaut)</button>
-    </div>
-
-    <hr />
-
-    <section class="actions-section">
-      <div class="action-buttons">
-        <button @click="addDocument">Ajouter un nouveau document</button>
-        <button class="btn-danger" @click="deleteAllDocuments">☠️ Tout supprimer</button>
+    <section class="panel factory-panel">
+      <h2>🏭 Création de Posts</h2>
+      <div class="button-group">
+        <button class="btn btn-secondary" @click="addDocument">📄 Nouveau Doc Vide</button>
+        <button class="btn btn-secondary" @click="generateFakeData(10)">🤖 +10 Fake Docs</button>
+        <button class="btn btn-secondary" @click="generateFakeData(50)">🤖 +50 Fake Docs</button>
       </div>
     </section>
 
-    <section class="posts-section">
-      <div class="posts-grid">
+    <section class="control-bar">
+      <div class="search-wrapper">
+        <span class="search-icon">🔍</span>
+        <input
+          v-model="searchQuery"
+          @input="performSearch"
+          type="text"
+          class="form-input search-input"
+          placeholder="Filtrer par catégorie..."
+        />
+      </div>
+      <div class="sort-wrapper">
+        <button class="btn btn-ghost" @click="sortByLikes">🔥 Trier par Popularité</button>
+        <button class="btn btn-ghost" @click="fetchData">📅 Trier par Date</button>
+      </div>
+    </section>
+
+    <section class="posts-feed">
+      <transition-group name="list">
         <article
           v-for="post in searchQuery ? filteredPosts : postsData"
           :key="post._id"
           class="post-card"
         >
-          <div
-            style="
-              display: flex;
-              justify-content: space-between;
-              align-items: flex-start;
-              gap: 10px;
-            "
-          >
-            <h3 style="margin: 0">{{ post.title }}</h3>
-
+          <div class="card-header">
+            <h3>{{ post.title }}</h3>
             <select
               class="cat-select"
               :value="post.attributes?.category || ''"
               @change="changePostCategory(post, $event)"
             >
-              <option value="" disabled>Choisir catégorie...</option>
+              <option value="" disabled>Catégorie...</option>
               <option v-for="cat in categoriesData" :key="cat._id" :value="cat.name">
                 {{ cat.name }}
               </option>
             </select>
           </div>
 
-          <p>{{ post.post_content }}</p>
+          <div class="card-body">
+            <p>{{ post.post_content }}</p>
+          </div>
 
-          <div class="likes-section">
-            <button @click="likePost(post._id)" class="btn-like">
-              👍 J'aime ({{ post.likes || 0 }})
+          <div class="card-interactions">
+            <button @click="likePost(post._id)" class="btn-like" :class="{ liked: post.likes > 0 }">
+              ❤️ {{ post.likes || 0 }}
             </button>
           </div>
 
           <div class="comments-section">
             <h4>💬 Commentaires ({{ post.comments?.length || 0 }})</h4>
 
-            <ul>
+            <ul class="comments-list">
               <li v-for="(comment, index) in post.comments" :key="index" class="comment-item">
-                <div>
-                  <small>📅 {{ new Date(comment.date).toLocaleTimeString() }}</small> :
-                  <span>{{ comment.text }}</span>
+                <div class="comment-content">
+                  <span class="comment-text">{{ comment.text }}</span>
+                  <small class="comment-date">{{
+                    new Date(comment.date).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
+                  }}</small>
                 </div>
-                <span
-                  class="delete-comment-btn"
-                  @click="deleteComment(post._id, index)"
-                  title="Supprimer"
-                  >❌</span
-                >
+                <button class="btn-icon-delete" @click="deleteComment(post._id, index)">×</button>
               </li>
             </ul>
 
-            <div class="add-comment-box">
+            <div class="input-group sm">
               <input
                 v-model="newCommentText[post._id]"
+                class="form-input sm"
                 placeholder="Écrire un commentaire..."
                 @keyup.enter="addCommentToPost(post._id)"
               />
-              <button @click="addCommentToPost(post._id)">Envoyer</button>
+              <button class="btn btn-sm btn-primary" @click="addCommentToPost(post._id)">
+                Envoyer
+              </button>
             </div>
           </div>
 
-          <div class="actions">
+          <div class="card-footer">
             <button
-              class="btn-update"
+              class="btn-text"
               @click="updateDocument(post._id, { title: post.title + ' (Modifié)' })"
             >
-              ✏️ Modifier Post
+              ✏️ Éditer
             </button>
-            <button class="btn-delete" @click="deleteDocument(post._id)">🗑️ Supprimer Post</button>
+            <button class="btn-text danger" @click="deleteDocument(post._id)">🗑️ Supprimer</button>
           </div>
         </article>
-      </div>
+      </transition-group>
     </section>
   </div>
 </template>
 
 <style scoped>
-.container {
-  max-width: 800px;
+:root {
+  --bg-color: #121212;
+  --card-bg: #1e1e1e;
+  --primary: #42b883; /* Vue Green */
+  --primary-hover: #33a06f;
+  --danger: #ff4d4d;
+  --text-main: #e0e0e0;
+  --text-muted: #a0a0a0;
+  --border: #333;
+}
+
+.app-container {
   margin: 0 auto;
-  padding: 20px;
-  font-family: sans-serif;
+  padding: 40px 20px;
+  font-family:
+    'Inter',
+    system-ui,
+    -apple-system,
+    sans-serif;
+  color: #e0e0e0;
+  background-color: #121212;
+  min-height: 100vh;
 }
 
-.online {
-  background-color: #d4edda;
-  color: #155724;
-  border: 1px solid #c3e6cb;
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 600;
+  color: #fff;
 }
-
-.offline {
-  background-color: #f8d7da;
-  color: #721c24;
-  border: 1px solid #f5c6cb;
-}
-
-.status {
-  margin-top: 10px;
-  font-size: 0.9em;
-  color: #666;
-}
-
-.cat-chip {
-  display: inline-flex;
-  align-items: center;
-  background: #6c757d;
-  color: white;
-  padding: 5px 10px;
-  border-radius: 15px;
-  margin-right: 5px;
+h1 {
+  font-size: 2rem;
   margin-bottom: 5px;
-  font-size: 0.9em;
+}
+h2 {
+  font-size: 1.2rem;
+  margin-bottom: 15px;
+  border-left: 4px solid #42b883;
+  padding-left: 10px;
+}
+.subtitle {
+  font-size: 1rem;
+  color: #666;
+  font-weight: 400;
 }
 
-.btn-x {
-  background: none;
-  border: none;
-  color: white;
-  margin-left: 5px;
-  cursor: pointer;
-  font-weight: bold;
-  padding: 0 5px;
-}
-
-.btn-x:hover {
-  color: #ffcccc;
-}
-
-.add-cat-box {
-  margin-bottom: 10px;
-  display: flex;
-  gap: 10px;
-}
-/* FIN NOUVEAUX STYLES */
-
-.post-card {
-  border: 1px solid #ddd;
-  padding: 15px;
-  margin-bottom: 10px;
-  border-radius: 8px;
-  background-color: #fff;
-  color: #333;
-}
-
-.cat-tag {
-  background: #e0e0e0;
-  color: #2c3e50;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: bold;
-  font-size: 0.85em;
-}
-
-.actions {
-  margin-top: 10px;
-  display: flex;
-  gap: 10px;
-}
-
-button {
-  cursor: pointer;
-  padding: 5px 10px;
-}
-
-.btn-danger {
-  background-color: #dc3545;
-  color: white;
-  border: 1px solid #c82333;
-  margin-left: 10px;
-}
-
-.btn-danger:hover {
-  background-color: #c82333;
-}
-
-hr {
-  margin: 20px 0;
-}
-
-.likes-section {
-  margin: 10px 0;
-}
-.btn-like {
-  background-color: #e3f2fd;
-  border: 1px solid #2196f3;
-  color: #0d47a1;
-  border-radius: 20px;
-  padding: 5px 15px;
-  font-weight: bold;
-}
-.btn-like:hover {
-  background-color: #bbdefb;
-}
-
-.comments-section {
-  background-color: #f8f9fa;
-  padding: 10px;
-  border-radius: 8px;
-  margin-top: 10px;
-  border: 1px solid #e9ecef;
-}
-.comments-section h4 {
-  margin-top: 0;
-  font-size: 1em;
-  color: #495057;
-}
-
-.comments-section ul {
-  list-style: none;
-  padding: 0;
-  margin: 10px 0;
-}
-.comment-item {
-  border-bottom: 1px solid #dee2e6;
-  padding: 5px 0;
+.main-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #333;
+}
+
+.sync-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+}
+
+.status-badge {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.85em;
+  font-weight: bold;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+.status-badge:active {
+  transform: scale(0.95);
+}
+.online {
+  background: #155724;
+  color: #d4edda;
+  border: 1px solid #1e7e34;
+}
+.offline {
+  background: #721c24;
+  color: #f8d7da;
+  border: 1px solid #dc3545;
+}
+.status-text {
+  font-size: 0.8em;
+  color: #666;
+}
+
+.panel {
+  background: #1e1e1e;
+  padding: 20px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  border: 1px solid #333;
+}
+
+.global-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 20px;
+}
+
+.input-group {
+  display: flex;
+  gap: 10px;
+}
+.input-group.sm {
+  margin-top: 10px;
+}
+
+.form-input {
+  flex-grow: 1;
+  padding: 10px 15px;
+  border-radius: 8px;
+  border: 1px solid #444;
+  background: #2a2a2a;
+  color: white;
+  font-size: 0.95rem;
+  transition: border-color 0.2s;
+}
+.form-input:focus {
+  outline: none;
+  border-color: #42b883;
+}
+.form-input.sm {
+  padding: 8px 12px;
+  font-size: 0.9rem;
+}
+
+.btn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-sm {
+  padding: 8px 15px;
   font-size: 0.9em;
 }
 
-.delete-comment-btn {
-  cursor: pointer;
-  opacity: 0.6;
-  margin-left: 10px;
+.btn-primary {
+  background: #42b883;
+  color: #121212;
 }
-.delete-comment-btn:hover {
-  opacity: 1;
-  transform: scale(1.2);
+.btn-primary:hover {
+  background: #33a06f;
 }
 
-.add-comment-box {
-  display: flex;
-  gap: 5px;
-  margin-top: 10px;
+.btn-secondary {
+  background: #333;
+  color: #fff;
 }
-.add-comment-box input {
+.btn-secondary:hover {
+  background: #444;
+}
+
+.btn-danger-outline {
+  background: transparent;
+  border: 1px solid #ff4d4d;
+  color: #ff4d4d;
+}
+.btn-danger-outline:hover {
+  background: #ff4d4d;
+  color: white;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: #aaa;
+}
+.btn-ghost:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.button-group {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 15px;
+}
+.cat-chip {
+  background: #2c3e50;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.85em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #3e5871;
+}
+.btn-x {
+  background: none;
+  border: none;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 1.1em;
+  line-height: 0.5;
+}
+.btn-x:hover {
+  color: #ff4d4d;
+}
+.empty-state {
+  color: #666;
+  font-style: italic;
+  font-size: 0.9em;
+}
+
+.control-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.search-wrapper {
+  position: relative;
   flex-grow: 1;
-  padding: 8px;
-  border: 1px solid #ced4da;
-  border-radius: 4px;
+  max-width: 400px;
+}
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.9em;
+  opacity: 0.5;
+}
+.search-input {
+  padding-left: 35px;
+}
+
+.posts-feed {
+  display: grid;
+  gap: 20px;
+}
+
+.post-card {
+  background: #1e1e1e;
+  border-radius: 12px;
+  border: 1px solid #333;
+  overflow: hidden;
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s;
+}
+.post-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+  border-color: #444;
+}
+
+.card-header {
+  padding: 15px 20px;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid #333;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .cat-select {
+  background: #121212;
+  color: #bbb;
+  border: 1px solid #444;
+  border-radius: 6px;
   padding: 4px 8px;
-  border-radius: 15px;
-  border: 1px solid #ccc;
-  background-color: #f8f9fa;
-  font-size: 0.85em;
-  color: #333;
-  cursor: pointer;
-  max-width: 150px; /* Pour ne pas écraser le titre */
+  font-size: 0.8em;
+  outline: none;
 }
 
-.cat-select:focus {
-  outline: none;
-  border-color: #007bff;
-  background-color: #fff;
+.card-body {
+  padding: 20px;
+  color: #ddd;
+  line-height: 1.5;
+}
+
+.card-interactions {
+  padding: 0 20px 15px;
+}
+
+.btn-like {
+  background: #2a2a2a;
+  border: 1px solid #333;
+  color: #ccc;
+  padding: 6px 15px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-like:hover {
+  background: #333;
+}
+.btn-like.liked {
+  color: #ff4d4d;
+  border-color: #ff4d4d22;
+  background: #ff4d4d11;
+}
+
+.comments-section {
+  background: #181818;
+  padding: 15px 20px;
+  border-top: 1px solid #333;
+}
+.comments-section h4 {
+  font-size: 0.9em;
+  color: #888;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.comments-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 15px 0;
+}
+.comment-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #222;
+}
+.comment-item:last-child {
+  border-bottom: none;
+}
+.comment-content {
+  display: flex;
+  flex-direction: column;
+}
+.comment-text {
+  font-size: 0.95em;
+}
+.comment-date {
+  font-size: 0.75em;
+  color: #666;
+  margin-top: 2px;
+}
+
+.btn-icon-delete {
+  background: none;
+  border: none;
+  color: #444;
+  cursor: pointer;
+  font-size: 1.2em;
+}
+.btn-icon-delete:hover {
+  color: #ff4d4d;
+}
+
+.card-footer {
+  padding: 10px 20px;
+  background: rgba(0, 0, 0, 0.2);
+  display: flex;
+  justify-content: flex-end;
+  gap: 15px;
+}
+.btn-text {
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+.btn-text:hover {
+  color: #fff;
+}
+.btn-text.danger:hover {
+  color: #ff4d4d;
+}
+
+.list-enter-active,
+.list-leave-active {
+  transition: all 0.3s ease;
+}
+.list-enter-from,
+.list-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
 }
 </style>
