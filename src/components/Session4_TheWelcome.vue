@@ -10,6 +10,13 @@ declare interface Comment {
   date: string
 }
 
+declare interface Category {
+  _id: string
+  _rev?: string
+  type: 'category'
+  name: string
+}
+
 declare interface Post {
   _id: string
   _rev?: string
@@ -22,7 +29,7 @@ declare interface Post {
     category?: string
   }
 }
-
+const categoriesData = ref<Category[]>([])
 const postsData = ref<Post[]>([])
 const localDB = ref()
 const remoteDB = ref()
@@ -73,33 +80,40 @@ const fetchData = async () => {
 
   try {
     const result = await localDB.value.allDocs({ include_docs: true, descending: true })
-    const docs = result.rows
-      .map((row: any) => row.doc)
-      .filter((doc: any) => !doc._id.startsWith('_design/'))
 
-    postsData.value = docs
+    const posts: Post[] = []
+    const categories: Category[] = []
 
-    if (searchQuery.value) {
-      performSearch()
-    }
+    result.rows.forEach((row: any) => {
+      const doc = row.doc
+
+      if (doc._id.startsWith('_design/')) return
+
+      if (doc.type === 'category') {
+        categories.push(doc as Category)
+      } else {
+        posts.push(doc as Post)
+      }
+    })
+
+    postsData.value = posts
+    categoriesData.value = categories
   } catch (error) {
     console.error(error)
   }
 }
 
 const addDocument = async () => {
-  const categories = ['Tech', 'Science', 'Sport', 'Culture', 'Politique']
-  const randomCategory = categories[Math.floor(Math.random() * categories.length)]
-
   const newPost: Partial<Post> = {
     _id: new Date().toISOString(),
-    title: 'Nouveau post (local)',
-    post_content: 'Contenu ajouté localement...',
-    likes: 0, // Init à 0
-    comments: [], // Init vide
+    type: 'post',
+    title: 'Nouveau post',
+    post_content: 'Contenu du message...',
+    likes: 0,
+    comments: [],
     attributes: {
       creation_date: new Date().toISOString(),
-      category: randomCategory,
+      category: '',
     },
   }
 
@@ -122,6 +136,27 @@ const updateDocument = async (id: string, updatedData: any) => {
       alert('Conflit détecté lors de la mise à jour.')
     }
     console.error(error)
+  }
+}
+
+const changePostCategory = async (post: Post, event: Event) => {
+  const selectElement = event.target as HTMLSelectElement
+  const newCategory = selectElement.value
+
+  try {
+    const doc = await localDB.value.get(post._id)
+
+    if (!doc.attributes) doc.attributes = {}
+    doc.attributes.category = newCategory
+
+    await localDB.value.put(doc)
+
+    if (searchQuery.value) performSearch()
+    else fetchData()
+
+    console.log(`Catégorie changée pour : ${newCategory}`)
+  } catch (error) {
+    console.error('Erreur changement catégorie', error)
   }
 }
 
@@ -182,6 +217,35 @@ const toggleOnlineOffline = () => {
   }
 }
 
+const newCategoryName = ref('')
+
+const addCategory = async () => {
+  if (!newCategoryName.value.trim()) return
+
+  const newCat: Category = {
+    _id: 'cat_' + Date.now(), // ID préfixé pour être propre
+    type: 'category', // IMPORTANT : Marqueur de la 2ème collection
+    name: newCategoryName.value.trim(),
+  }
+
+  try {
+    await localDB.value.put(newCat)
+    newCategoryName.value = '' // Reset input
+    await fetchData()
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+const deleteCategory = async (cat: Category) => {
+  try {
+    await localDB.value.remove(cat)
+    await fetchData()
+  } catch (error) {
+    console.error(error)
+  }
+}
+
 const performSearch = async () => {
   if (!searchQuery.value.trim()) {
     filteredPosts.value = []
@@ -201,26 +265,36 @@ const performSearch = async () => {
 }
 
 const generateFakeData = async (count: number) => {
-  const categories = ['Tech', 'Science', 'Sport', 'Culture', 'Politique']
+  if (categoriesData.value.length === 0) {
+    alert(
+      "⚠️ Impossible de générer : aucune catégorie trouvée.\nVeuillez créer au moins une catégorie dans la 'Collection 2' d'abord !",
+    )
+    return
+  }
+
   const documents: any[] = []
 
   for (let i = 0; i < count; i++) {
+    const randomCat = categoriesData.value[Math.floor(Math.random() * categoriesData.value.length)]
+
     documents.push({
       _id: new Date().getTime() + '_' + i,
+      type: 'post',
       title: `Doc factice #${i + 1}`,
-      post_content: `Contenu généré...`,
-      likes: Math.floor(Math.random() * 100), // Nombre aléatoire de likes (0-99)
-      comments: [], // Tableau vide pour l'instant
+      post_content: `Contenu généré automatiquement...`,
+      likes: Math.floor(Math.random() * 100),
+      comments: [],
       attributes: {
         creation_date: new Date().toISOString(),
-        category: categories[Math.floor(Math.random() * categories.length)],
+        category: randomCat.name,
       },
     })
   }
 
   try {
     await localDB.value.bulkDocs(documents)
-    fetchData()
+    console.log(`✅ ${count} documents générés.`)
+    await fetchData()
   } catch (error) {
     console.error(error)
   }
@@ -356,6 +430,29 @@ const deleteComment = async (postId: string, commentIndex: number) => {
 
     <hr />
 
+    <section class="categories-section">
+      <h2>📂 Collection 2 : Catégories</h2>
+
+      <div class="add-cat-box">
+        <input
+          v-model="newCategoryName"
+          placeholder="Nouvelle catégorie (ex: Gaming)"
+          @keyup.enter="addCategory"
+        />
+        <button @click="addCategory">Ajouter</button>
+      </div>
+
+      <div class="tags-container">
+        <span v-for="cat in categoriesData" :key="cat._id" class="cat-chip">
+          {{ cat.name }}
+          <button @click="deleteCategory(cat)" class="btn-x">×</button>
+        </span>
+        <em v-if="categoriesData.length === 0">Aucune catégorie. Créez-en une pour commencer !</em>
+      </div>
+    </section>
+
+    <hr />
+
     <section class="data-factory-section">
       <button @click="generateFakeData(10)">+ 10 Docs</button>
       <button @click="generateFakeData(50)">+ 50 Docs</button>
@@ -374,6 +471,7 @@ const deleteComment = async (postId: string, commentIndex: number) => {
 
     <div style="margin-top: 10px; display: flex; gap: 10px">
       <button @click="sortByLikes">🔥 Trier par Popularité (DB)</button>
+      <button @click="fetchData">📅 Trier par Date (Défaut)</button>
     </div>
 
     <hr />
@@ -392,11 +490,26 @@ const deleteComment = async (postId: string, commentIndex: number) => {
           :key="post._id"
           class="post-card"
         >
-          <div style="display: flex; justify-content: space-between; align-items: center">
-            <h3>{{ post.title }}</h3>
-            <span v-if="post.attributes?.category" class="cat-tag">{{
-              post.attributes.category
-            }}</span>
+          <div
+            style="
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              gap: 10px;
+            "
+          >
+            <h3 style="margin: 0">{{ post.title }}</h3>
+
+            <select
+              class="cat-select"
+              :value="post.attributes?.category || ''"
+              @change="changePostCategory(post, $event)"
+            >
+              <option value="" disabled>Choisir catégorie...</option>
+              <option v-for="cat in categoriesData" :key="cat._id" :value="cat.name">
+                {{ cat.name }}
+              </option>
+            </select>
           </div>
 
           <p>{{ post.post_content }}</p>
@@ -475,6 +588,39 @@ const deleteComment = async (postId: string, commentIndex: number) => {
   font-size: 0.9em;
   color: #666;
 }
+
+.cat-chip {
+  display: inline-flex;
+  align-items: center;
+  background: #6c757d;
+  color: white;
+  padding: 5px 10px;
+  border-radius: 15px;
+  margin-right: 5px;
+  margin-bottom: 5px;
+  font-size: 0.9em;
+}
+
+.btn-x {
+  background: none;
+  border: none;
+  color: white;
+  margin-left: 5px;
+  cursor: pointer;
+  font-weight: bold;
+  padding: 0 5px;
+}
+
+.btn-x:hover {
+  color: #ffcccc;
+}
+
+.add-cat-box {
+  margin-bottom: 10px;
+  display: flex;
+  gap: 10px;
+}
+/* FIN NOUVEAUX STYLES */
 
 .post-card {
   border: 1px solid #ddd;
@@ -582,5 +728,22 @@ hr {
   padding: 8px;
   border: 1px solid #ced4da;
   border-radius: 4px;
+}
+
+.cat-select {
+  padding: 4px 8px;
+  border-radius: 15px;
+  border: 1px solid #ccc;
+  background-color: #f8f9fa;
+  font-size: 0.85em;
+  color: #333;
+  cursor: pointer;
+  max-width: 150px; /* Pour ne pas écraser le titre */
+}
+
+.cat-select:focus {
+  outline: none;
+  border-color: #007bff;
+  background-color: #fff;
 }
 </style>
