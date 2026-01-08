@@ -42,6 +42,50 @@ const filteredPosts = ref<Post[]>([])
 const REMOTE_DB_URL = 'http://Nero:Penafiel29Snaky25@localhost:5984/infradon2'
 const LOCAL_DB_NAME = 'infradon_local'
 
+const selectedFile = ref<File | null>(null)
+const previewImageUrl = ref<string | null>(null)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
+const handleFileUpload = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  if (target.files && target.files[0]) {
+    const file = target.files[0]
+
+    if (!file.type.startsWith('image/')) {
+      alert('Veuillez sélectionner une image.')
+      clearSelectedFile()
+      return
+    }
+
+    selectedFile.value = file
+
+    previewImageUrl.value = URL.createObjectURL(file)
+  }
+}
+
+const clearSelectedFile = () => {
+  selectedFile.value = null
+  if (previewImageUrl.value) {
+    URL.revokeObjectURL(previewImageUrl.value)
+    previewImageUrl.value = null
+  }
+
+  if (fileInputRef.value) {
+    fileInputRef.value.value = ''
+  }
+}
+
+const getPostImageSrc = (post: any) => {
+  if (!post._attachments) return null
+
+  const firstKey = Object.keys(post._attachments)[0]
+  if (!firstKey) return null
+
+  const attachment = post._attachments[firstKey]
+
+  return `data:${attachment.content_type};base64,${attachment.data}`
+}
+
 const initApp = async () => {
   localDB.value = new PouchDB(LOCAL_DB_NAME)
   remoteDB.value = new PouchDB(REMOTE_DB_URL)
@@ -79,16 +123,18 @@ const fetchData = async () => {
   if (!localDB.value) return
 
   try {
-    const result = await localDB.value.allDocs({ include_docs: true, descending: true })
+    const result = await localDB.value.allDocs({
+      include_docs: true,
+      descending: true,
+      attachments: true,
+    })
 
     const posts: Post[] = []
     const categories: Category[] = []
 
     result.rows.forEach((row: any) => {
       const doc = row.doc
-
       if (doc._id.startsWith('_design/')) return
-
       if (doc.type === 'category') {
         categories.push(doc as Category)
       } else {
@@ -104,10 +150,10 @@ const fetchData = async () => {
 }
 
 const addDocument = async () => {
-  const newPost: Partial<Post> = {
+  const newPost: any = {
     _id: new Date().toISOString(),
     type: 'post',
-    title: 'Nouveau post',
+    title: selectedFile.value ? 'Nouveau post avec image' : 'Nouveau post',
     post_content: 'Contenu du message...',
     likes: 0,
     comments: [],
@@ -117,8 +163,18 @@ const addDocument = async () => {
     },
   }
 
+  if (selectedFile.value) {
+    newPost._attachments = {
+      [selectedFile.value.name]: {
+        content_type: selectedFile.value.type,
+        data: selectedFile.value,
+      },
+    }
+  }
+
   try {
     await localDB.value.put(newPost)
+    clearSelectedFile()
     await fetchData()
   } catch (error) {
     console.error(error)
@@ -496,8 +552,41 @@ const deleteComment = async (postId: string, commentIndex: number) => {
 
     <section class="panel factory-panel">
       <h2>🏭 Création de Posts</h2>
+
+      <div class="media-upload-container">
+        <input
+          type="file"
+          ref="fileInputRef"
+          accept="image/png, image/jpeg, image/gif"
+          style="display: none"
+          @change="handleFileUpload"
+        />
+
+        <button
+          v-if="!previewImageUrl"
+          class="btn btn-secondary-outline attachment-btn"
+          @click="fileInputRef?.click()"
+        >
+          📷 Ajouter une image
+        </button>
+
+        <div v-else class="preview-container">
+          <img :src="previewImageUrl" class="preview-image" alt="Prévisualisation" />
+          <button
+            class="btn-icon-cancel remove-preview-btn"
+            @click="clearSelectedFile"
+            title="Supprimer l'image sélectionnée"
+          >
+            ❌
+          </button>
+          <span class="filename-preview">{{ selectedFile?.name }}</span>
+        </div>
+      </div>
+
       <div class="button-group">
-        <button class="btn btn-secondary" @click="addDocument">📄 Nouveau Doc Vide</button>
+        <button class="btn btn-secondary" @click="addDocument">
+          📄 {{ selectedFile ? 'Créer Doc avec Image' : 'Nouveau Doc Vide' }}
+        </button>
         <button class="btn btn-secondary" @click="generateFakeData(10)">🤖 +10 Fake Docs</button>
         <button class="btn btn-secondary" @click="generateFakeData(50)">🤖 +50 Fake Docs</button>
       </div>
@@ -542,6 +631,9 @@ const deleteComment = async (postId: string, commentIndex: number) => {
           </div>
 
           <div class="card-body">
+            <div v-if="post._attachments" class="post-media">
+              <img :src="getPostImageSrc(post)" alt="Image du post" loading="lazy" />
+            </div>
             <p>{{ post.post_content }}</p>
           </div>
 
@@ -1061,8 +1153,92 @@ h2 {
 }
 .btn-icon-check:hover {
   background: rgba(66, 184, 131, 0.2);
-} /* Vert */
+}
 .btn-icon-cancel:hover {
   background: rgba(255, 77, 77, 0.2);
-} /* Rouge */
+}
+
+/* --- Styles pour l'upload de média --- */
+.media-upload-container {
+  margin-bottom: 15px;
+  padding: 10px;
+  border: 1px dashed #444;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60px;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.attachment-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.preview-image {
+  max-height: 100px;
+  border-radius: 6px;
+  border: 2px solid #42b883;
+}
+
+.remove-preview-btn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #1e1e1e;
+  border-radius: 50%;
+  border: 2px solid #ff4d4d;
+  color: #ff4d4d;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  padding: 0;
+}
+
+.filename-preview {
+  font-size: 0.8em;
+  color: #888;
+  margin-top: 5px;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-secondary-outline {
+  background: transparent;
+  border: 1px solid #666;
+  color: #ccc;
+}
+.btn-secondary-outline:hover {
+  border-color: #aaa;
+  color: #fff;
+}
+
+.post-media {
+  margin-bottom: 15px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+}
+
+.post-media img {
+  width: 100%;
+  height: auto;
+  display: block;
+  max-height: 400px;
+  object-fit: contain;
+}
 </style>
