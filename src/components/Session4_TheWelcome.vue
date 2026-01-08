@@ -47,6 +47,16 @@ const newPostContent = ref('')
 const selectedFile = ref<File | null>(null)
 const previewImageUrl = ref<string | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
+const expandedComments = ref<{ [key: string]: boolean }>({})
+
+const toggleComments = (postId: string) => {
+  expandedComments.value[postId] = !expandedComments.value[postId]
+}
+
+const isCommentVisible = (postId: string, index: number, total: number) => {
+  if (expandedComments.value[postId]) return true
+  return index === total - 1
+}
 
 const handleFileUpload = (event: Event) => {
   const target = event.target as HTMLInputElement
@@ -407,35 +417,36 @@ const performSearch = async () => {
 }
 
 const generateFakeData = async (count: number) => {
-  if (categoriesData.value.length === 0) {
-    alert(
-      "⚠️ Impossible de générer : aucune catégorie trouvée.\nVeuillez créer au moins une catégorie dans la 'Collection 2' d'abord !",
-    )
-    return
-  }
-
   const documents: any[] = []
 
   for (let i = 0; i < count; i++) {
-    const randomCat = categoriesData.value[Math.floor(Math.random() * categoriesData.value.length)]
+    let catName: string
+
+    if (categoriesData.value.length > 0) {
+      const randomCat =
+        categoriesData.value[Math.floor(Math.random() * categoriesData.value.length)]
+      catName = randomCat.name
+    } else {
+      catName = `Cat-Auto-${Math.floor(Math.random() * 100)}`
+    }
 
     documents.push({
       _id: new Date().getTime() + '_' + i,
       type: 'post',
       title: `Doc factice #${i + 1}`,
-      post_content: `Contenu généré automatiquement...`,
+      post_content: `Ceci est une description générée automatiquement pour tester l'affichage...`,
       likes: Math.floor(Math.random() * 100),
       comments: [],
       attributes: {
         creation_date: new Date().toISOString(),
-        category: randomCat.name,
+        categories: [catName],
       },
     })
   }
 
   try {
     await localDB.value.bulkDocs(documents)
-    console.log(`✅ ${count} documents générés.`)
+    console.log(`✅ ${count} documents générés avec succès.`)
     await fetchData()
   } catch (error) {
     console.error(error)
@@ -676,14 +687,17 @@ const deleteComment = async (postId: string, commentIndex: number) => {
 
         <div class="button-group creation-actions">
           <button class="btn btn-primary btn-block" @click="addDocument">✨ Publier le Post</button>
+        </div>
 
-          <div class="fake-data-actions">
-            <div class="mini-tags-list">
-              <span v-for="cat in categoriesData" :key="cat._id" class="mini-tag">
-                {{ cat.name }}
-                <span @click="deleteCategory(cat)" class="del-tag">×</span>
-              </span>
-            </div>
+        <div class="factory-actions">
+          <p class="factory-label">🛠️ Zone de test (Générateur) :</p>
+          <div class="factory-buttons-row">
+            <button class="btn btn-secondary btn-sm" @click="generateFakeData(10)">
+              🤖 +10 Fakes
+            </button>
+            <button class="btn btn-secondary btn-sm" @click="generateFakeData(50)">
+              🤖 +50 Fakes
+            </button>
           </div>
         </div>
       </div>
@@ -825,10 +839,29 @@ const deleteComment = async (postId: string, commentIndex: number) => {
             </div>
 
             <div class="comments-section">
-              <h4>💬 Commentaires ({{ post.comments?.length || 0 }})</h4>
+              <div class="comments-header">
+                <h4>💬 Commentaires ({{ post.comments?.length || 0 }})</h4>
+
+                <button
+                  v-if="post.comments && post.comments.length > 1"
+                  class="btn-text-xs"
+                  @click="toggleComments(post._id)"
+                >
+                  {{
+                    expandedComments[post._id]
+                      ? 'Masquer les anciens'
+                      : `Voir les ${post.comments.length - 1} précédents...`
+                  }}
+                </button>
+              </div>
 
               <ul class="comments-list">
-                <li v-for="(comment, index) in post.comments" :key="index" class="comment-item">
+                <li
+                  v-for="(comment, index) in post.comments"
+                  :key="index"
+                  class="comment-item"
+                  v-show="isCommentVisible(post._id, index, post.comments.length)"
+                >
                   <div
                     v-if="editingCommentKey === `${post._id}-${index}`"
                     class="comment-edit-mode"
@@ -845,6 +878,7 @@ const deleteComment = async (postId: string, commentIndex: number) => {
                       <button class="btn-icon-cancel" @click="cancelEditComment">❌</button>
                     </div>
                   </div>
+
                   <div v-else class="comment-display-mode">
                     <div class="comment-content">
                       <span class="comment-text">{{ comment.text }}</span>
@@ -874,7 +908,7 @@ const deleteComment = async (postId: string, commentIndex: number) => {
                 <input
                   v-model="newCommentText[post._id]"
                   class="form-input sm"
-                  placeholder="Écrire un commentaire..."
+                  placeholder="Commenter..."
                   @keyup.enter="addCommentToPost(post._id)"
                 />
                 <button class="btn btn-sm btn-primary" @click="addCommentToPost(post._id)">
@@ -1287,6 +1321,31 @@ h2 {
   font-size: 0.8em;
 }
 
+.factory-actions {
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px dashed #333;
+}
+
+.factory-label {
+  font-size: 0.8em;
+  color: #666;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.factory-buttons-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 0.85em;
+}
+
 .btn-xs {
   padding: 2px 8px;
   font-size: 0.75em;
@@ -1440,7 +1499,6 @@ h2 {
   background: rgba(255, 77, 77, 0.2);
 }
 
-/* --- Styles pour l'upload de média --- */
 .media-upload-container {
   margin-bottom: 15px;
   padding: 10px;
@@ -1457,6 +1515,31 @@ h2 {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.comments-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.comments-header h4 {
+  margin: 0;
+}
+
+.btn-text-xs {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 0.8em;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.btn-text-xs:hover {
+  color: #42b883;
 }
 
 .preview-container {
