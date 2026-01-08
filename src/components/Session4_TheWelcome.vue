@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, onUnmounted } from 'vue'
+import { onMounted, ref, onUnmounted, computed } from 'vue'
 import PouchDB from 'pouchdb'
 import findPlugin from 'pouchdb-find'
 
@@ -39,7 +39,14 @@ const isOnline = ref(true)
 const syncHandler = ref<PouchDB.Replication.Sync<Post> | null>(null)
 const searchQuery = ref('')
 const filteredPosts = ref<Post[]>([])
-
+const postsLimit = ref(10)
+const displayedPosts = computed(() => {
+  const source = searchQuery.value ? filteredPosts.value : postsData.value
+  return source.slice(0, postsLimit.value)
+})
+const loadMorePosts = () => {
+  postsLimit.value += 10
+}
 const REMOTE_DB_URL = 'http://Nero:Penafiel29Snaky25@localhost:5984/infradon2'
 const LOCAL_DB_NAME = 'infradon_local'
 const newPostTitle = ref('')
@@ -153,6 +160,8 @@ const fetchData = async () => {
         posts.push(doc as Post)
       }
     })
+
+    posts.sort((a, b) => (b.likes || 0) - (a.likes || 0))
 
     postsData.value = posts
     categoriesData.value = categories
@@ -714,16 +723,12 @@ const deleteComment = async (postId: string, commentIndex: number) => {
           placeholder="Filtrer par catégorie..."
         />
       </div>
-      <div class="sort-wrapper">
-        <button class="btn btn-ghost" @click="sortByLikes">🔥 Trier par Popularité</button>
-        <button class="btn btn-ghost" @click="fetchData">📅 Trier par Date</button>
-      </div>
     </section>
 
     <section class="posts-feed">
       <transition-group name="list">
         <article
-          v-for="post in searchQuery ? filteredPosts : postsData"
+          v-for="post in displayedPosts"
           :key="post._id"
           class="post-card"
           :class="{ 'is-editing': editingPostId === post._id }"
@@ -926,6 +931,17 @@ const deleteComment = async (postId: string, commentIndex: number) => {
           </template>
         </article>
       </transition-group>
+
+      <div
+        v-if="postsLimit < (searchQuery ? filteredPosts.length : postsData.length)"
+        class="load-more-container"
+      >
+        <button class="btn btn-secondary btn-block" @click="loadMorePosts">
+          ⬇️ Charger les 10 suivants
+        </button>
+      </div>
+
+      <p v-else-if="postsData.length > 0" class="end-of-feed">Vous avez tout vu ! 🎉</p>
     </section>
   </div>
 </template>
@@ -1263,6 +1279,19 @@ h2 {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.load-more-container {
+  margin: 30px 0;
+  text-align: center;
+}
+
+.end-of-feed {
+  text-align: center;
+  color: #666;
+  font-style: italic;
+  margin-top: 30px;
+  margin-bottom: 50px;
 }
 
 .cat-select {
