@@ -399,7 +399,40 @@ const addCommentToPost = async (id: string) => {
     console.error(error)
   }
 }
+const editingCommentKey = ref<string | null>(null)
 
+const editCommentInput = ref('')
+
+const startEditingComment = (postId: string, index: number, currentText: string) => {
+  editingCommentKey.value = `${postId}-${index}`
+  editCommentInput.value = currentText
+}
+
+const cancelEditComment = () => {
+  editingCommentKey.value = null
+  editCommentInput.value = ''
+}
+
+const saveEditedComment = async (postId: string, index: number) => {
+  if (!editCommentInput.value.trim()) return
+
+  try {
+    const doc = await localDB.value.get(postId)
+
+    if (doc.comments && doc.comments[index]) {
+      doc.comments[index].text = editCommentInput.value.trim()
+
+      await localDB.value.put(doc)
+
+      cancelEditComment()
+
+      if (searchQuery.value) performSearch()
+      else fetchData()
+    }
+  } catch (error) {
+    console.error("Erreur lors de l'édition du commentaire", error)
+  }
+}
 const deleteComment = async (postId: string, commentIndex: number) => {
   try {
     const doc = await localDB.value.get(postId)
@@ -523,16 +556,44 @@ const deleteComment = async (postId: string, commentIndex: number) => {
 
             <ul class="comments-list">
               <li v-for="(comment, index) in post.comments" :key="index" class="comment-item">
-                <div class="comment-content">
-                  <span class="comment-text">{{ comment.text }}</span>
-                  <small class="comment-date">{{
-                    new Date(comment.date).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })
-                  }}</small>
+                <div v-if="editingCommentKey === `${post._id}-${index}`" class="comment-edit-mode">
+                  <input
+                    v-model="editCommentInput"
+                    class="form-input sm"
+                    @keyup.enter="saveEditedComment(post._id, index)"
+                    ref="editInputRef"
+                  />
+                  <div class="edit-actions">
+                    <button class="btn-icon-check" @click="saveEditedComment(post._id, index)">
+                      ✅
+                    </button>
+                    <button class="btn-icon-cancel" @click="cancelEditComment">❌</button>
+                  </div>
                 </div>
-                <button class="btn-icon-delete" @click="deleteComment(post._id, index)">×</button>
+
+                <div v-else class="comment-display-mode">
+                  <div class="comment-content">
+                    <span class="comment-text">{{ comment.text }}</span>
+                    <small class="comment-date">{{
+                      new Date(comment.date).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    }}</small>
+                  </div>
+
+                  <div class="comment-actions">
+                    <button
+                      class="btn-icon-edit"
+                      @click="startEditingComment(post._id, index, comment.text)"
+                    >
+                      ✏️
+                    </button>
+                    <button class="btn-icon-delete" @click="deleteComment(post._id, index)">
+                      ×
+                    </button>
+                  </div>
+                </div>
               </li>
             </ul>
 
@@ -961,4 +1022,47 @@ h2 {
   opacity: 0;
   transform: translateY(10px);
 }
+
+.comment-display-mode {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.comment-edit-mode {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  align-items: center;
+}
+
+.edit-actions,
+.comment-actions {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.btn-icon-edit,
+.btn-icon-check,
+.btn-icon-cancel {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.btn-icon-edit:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.btn-icon-check:hover {
+  background: rgba(66, 184, 131, 0.2);
+} /* Vert */
+.btn-icon-cancel:hover {
+  background: rgba(255, 77, 77, 0.2);
+} /* Rouge */
 </style>
