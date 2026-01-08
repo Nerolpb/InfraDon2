@@ -29,6 +29,7 @@ declare interface Post {
     category?: string
   }
 }
+const newPostCategory = ref('')
 const categoriesData = ref<Category[]>([])
 const postsData = ref<Post[]>([])
 const localDB = ref()
@@ -41,7 +42,8 @@ const filteredPosts = ref<Post[]>([])
 
 const REMOTE_DB_URL = 'http://Nero:Penafiel29Snaky25@localhost:5984/infradon2'
 const LOCAL_DB_NAME = 'infradon_local'
-
+const newPostTitle = ref('')
+const newPostContent = ref('')
 const selectedFile = ref<File | null>(null)
 const previewImageUrl = ref<string | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -150,16 +152,22 @@ const fetchData = async () => {
 }
 
 const addDocument = async () => {
+  if (!newPostTitle.value.trim()) {
+    alert('Veuillez donner un titre à votre post.')
+    return
+  }
+
   const newPost: any = {
     _id: new Date().toISOString(),
     type: 'post',
-    title: selectedFile.value ? 'Nouveau post avec image' : 'Nouveau post',
-    post_content: 'Contenu du message...',
+    title: newPostTitle.value.trim(),
+    post_content: newPostContent.value.trim() || 'Aucune description...',
     likes: 0,
     comments: [],
     attributes: {
       creation_date: new Date().toISOString(),
-      category: '',
+
+      category: newPostCategory.value || 'Général',
     },
   }
 
@@ -174,7 +182,12 @@ const addDocument = async () => {
 
   try {
     await localDB.value.put(newPost)
+
+    newPostTitle.value = ''
+    newPostContent.value = ''
+    newPostCategory.value = ''
     clearSelectedFile()
+
     await fetchData()
   } catch (error) {
     console.error(error)
@@ -213,6 +226,76 @@ const changePostCategory = async (post: Post, event: Event) => {
     console.log(`Catégorie changée pour : ${newCategory}`)
   } catch (error) {
     console.error('Erreur changement catégorie', error)
+  }
+}
+
+const editingPostId = ref<string | null>(null)
+
+const editForm = ref({
+  title: '',
+  content: '',
+  newFile: null as File | null,
+  newFilePreview: null as string | null,
+  deleteExistingImage: false,
+})
+
+const startEditingPost = (post: Post) => {
+  editingPostId.value = post._id
+
+  editForm.value = {
+    title: post.title,
+    content: post.post_content,
+    newFile: null,
+    newFilePreview: null,
+    deleteExistingImage: false,
+  }
+}
+
+const cancelEditingPost = () => {
+  editingPostId.value = null
+  if (editForm.value.newFilePreview) {
+    URL.revokeObjectURL(editForm.value.newFilePreview)
+  }
+}
+
+const handleEditFileUpload = (event: Event) => {
+  const target = event.target as HTMLInputElement
+  if (target.files && target.files[0]) {
+    const file = target.files[0]
+    editForm.value.newFile = file
+    editForm.value.newFilePreview = URL.createObjectURL(file)
+    editForm.value.deleteExistingImage = false
+  }
+}
+
+const savePostModifications = async (originalPost: Post) => {
+  try {
+    const doc: any = await localDB.value.get(originalPost._id)
+
+    doc.title = editForm.value.title
+    doc.post_content = editForm.value.content
+
+    if (editForm.value.deleteExistingImage && !editForm.value.newFile) {
+      doc._attachments = {} // On vide les pièces jointes
+    }
+
+    if (editForm.value.newFile) {
+      doc._attachments = {
+        [editForm.value.newFile.name]: {
+          content_type: editForm.value.newFile.type,
+          data: editForm.value.newFile,
+        },
+      }
+    }
+
+    await localDB.value.put(doc)
+
+    cancelEditingPost()
+    if (searchQuery.value) performSearch()
+    else fetchData()
+  } catch (error) {
+    console.error('Erreur sauvegarde édition', error)
+    alert('Erreur lors de la modification')
   }
 }
 
@@ -278,16 +361,19 @@ const newCategoryName = ref('')
 const addCategory = async () => {
   if (!newCategoryName.value.trim()) return
 
+  const name = newCategoryName.value.trim()
   const newCat: Category = {
-    _id: 'cat_' + Date.now(), // ID préfixé pour être propre
-    type: 'category', // IMPORTANT : Marqueur de la 2ème collection
-    name: newCategoryName.value.trim(),
+    _id: 'cat_' + Date.now(),
+    type: 'category',
+    name: name,
   }
 
   try {
     await localDB.value.put(newCat)
-    newCategoryName.value = '' // Reset input
     await fetchData()
+
+    newPostCategory.value = name
+    newCategoryName.value = '' // Reset input
   } catch (error) {
     console.error(error)
   }
@@ -524,71 +610,82 @@ const deleteComment = async (postId: string, commentIndex: number) => {
       <button class="btn btn-danger-outline" @click="deleteAllDocuments">☠️ Tout supprimer</button>
     </section>
 
-    <section class="panel categories-panel">
-      <h2>📂 Gestion des Catégories</h2>
-
-      <div class="input-group">
-        <input
-          v-model="newCategoryName"
-          class="form-input"
-          placeholder="Nouvelle catégorie (ex: Gaming)"
-          @keyup.enter="addCategory"
-        />
-        <button class="btn btn-primary" @click="addCategory">Ajouter</button>
-      </div>
-
-      <div class="tags-container">
-        <transition-group name="list">
-          <span v-for="cat in categoriesData" :key="cat._id" class="cat-chip">
-            {{ cat.name }}
-            <button @click="deleteCategory(cat)" class="btn-x">×</button>
-          </span>
-        </transition-group>
-        <p v-if="categoriesData.length === 0" class="empty-state">
-          Aucune catégorie. Créez-en une pour commencer !
-        </p>
-      </div>
-    </section>
-
     <section class="panel factory-panel">
       <h2>🏭 Création de Posts</h2>
 
-      <div class="media-upload-container">
-        <input
-          type="file"
-          ref="fileInputRef"
-          accept="image/png, image/jpeg, image/gif"
-          style="display: none"
-          @change="handleFileUpload"
-        />
+      <div class="creation-form">
+        <input v-model="newPostTitle" class="form-input" placeholder="Titre de votre post..." />
 
-        <button
-          v-if="!previewImageUrl"
-          class="btn btn-secondary-outline attachment-btn"
-          @click="fileInputRef?.click()"
-        >
-          📷 Ajouter une image
-        </button>
+        <div class="category-toolbar">
+          <select v-model="newPostCategory" class="form-select">
+            <option value="" disabled selected>Choisir une catégorie...</option>
+            <option v-for="cat in categoriesData" :key="cat._id" :value="cat.name">
+              {{ cat.name }}
+            </option>
+          </select>
 
-        <div v-else class="preview-container">
-          <img :src="previewImageUrl" class="preview-image" alt="Prévisualisation" />
-          <button
-            class="btn-icon-cancel remove-preview-btn"
-            @click="clearSelectedFile"
-            title="Supprimer l'image sélectionnée"
-          >
-            ❌
-          </button>
-          <span class="filename-preview">{{ selectedFile?.name }}</span>
+          <span class="divider">ou</span>
+
+          <div class="quick-create-cat">
+            <input
+              v-model="newCategoryName"
+              class="form-input sm"
+              placeholder="Nouvelle cat..."
+              @keyup.enter="addCategory"
+            />
+            <button class="btn btn-sm btn-secondary" @click="addCategory" title="Ajouter">+</button>
+          </div>
         </div>
-      </div>
 
-      <div class="button-group">
-        <button class="btn btn-secondary" @click="addDocument">
-          📄 {{ selectedFile ? 'Créer Doc avec Image' : 'Nouveau Doc Vide' }}
-        </button>
-        <button class="btn btn-secondary" @click="generateFakeData(10)">🤖 +10 Fake Docs</button>
-        <button class="btn btn-secondary" @click="generateFakeData(50)">🤖 +50 Fake Docs</button>
+        <div class="media-upload-container">
+          <input
+            type="file"
+            ref="fileInputRef"
+            accept="image/*"
+            style="display: none"
+            @change="handleFileUpload"
+          />
+
+          <button
+            v-if="!previewImageUrl"
+            class="btn btn-secondary-outline attachment-btn"
+            @click="fileInputRef?.click()"
+          >
+            📷 Ajouter une image
+          </button>
+
+          <div v-else class="preview-container">
+            <img :src="previewImageUrl" class="preview-image" alt="Prévisualisation" />
+            <button
+              class="btn-icon-cancel remove-preview-btn"
+              @click="clearSelectedFile"
+              title="Supprimer l'image"
+            >
+              ❌
+            </button>
+            <span class="filename-preview">{{ selectedFile?.name }}</span>
+          </div>
+        </div>
+
+        <textarea
+          v-model="newPostContent"
+          class="form-input textarea-creation"
+          placeholder="Quoi de neuf aujourd'hui ?"
+          rows="3"
+        ></textarea>
+
+        <div class="button-group creation-actions">
+          <button class="btn btn-primary btn-block" @click="addDocument">✨ Publier le Post</button>
+
+          <div class="fake-data-actions">
+            <div class="mini-tags-list">
+              <span v-for="cat in categoriesData" :key="cat._id" class="mini-tag">
+                {{ cat.name }}
+                <span @click="deleteCategory(cat)" class="del-tag">×</span>
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -615,102 +712,184 @@ const deleteComment = async (postId: string, commentIndex: number) => {
           v-for="post in searchQuery ? filteredPosts : postsData"
           :key="post._id"
           class="post-card"
+          :class="{ 'is-editing': editingPostId === post._id }"
         >
-          <div class="card-header">
-            <h3>{{ post.title }}</h3>
-            <select
-              class="cat-select"
-              :value="post.attributes?.category || ''"
-              @change="changePostCategory(post, $event)"
-            >
-              <option value="" disabled>Catégorie...</option>
-              <option v-for="cat in categoriesData" :key="cat._id" :value="cat.name">
-                {{ cat.name }}
-              </option>
-            </select>
-          </div>
-
-          <div class="card-body">
-            <div v-if="post._attachments" class="post-media">
-              <img :src="getPostImageSrc(post)" alt="Image du post" loading="lazy" />
+          <div v-if="editingPostId === post._id" class="edit-mode-container">
+            <div class="edit-header">
+              <h3>Mode Édition</h3>
             </div>
-            <p>{{ post.post_content }}</p>
-          </div>
 
-          <div class="card-interactions">
-            <button @click="likePost(post._id)" class="btn-like" :class="{ liked: post.likes > 0 }">
-              ❤️ {{ post.likes || 0 }}
-            </button>
-          </div>
+            <div class="edit-body">
+              <label>Titre :</label>
+              <input v-model="editForm.title" class="form-input" />
 
-          <div class="comments-section">
-            <h4>💬 Commentaires ({{ post.comments?.length || 0 }})</h4>
+              <label>Description :</label>
+              <textarea
+                v-model="editForm.content"
+                class="form-input textarea-edit"
+                rows="4"
+              ></textarea>
 
-            <ul class="comments-list">
-              <li v-for="(comment, index) in post.comments" :key="index" class="comment-item">
-                <div v-if="editingCommentKey === `${post._id}-${index}`" class="comment-edit-mode">
-                  <input
-                    v-model="editCommentInput"
-                    class="form-input sm"
-                    @keyup.enter="saveEditedComment(post._id, index)"
-                    ref="editInputRef"
-                  />
-                  <div class="edit-actions">
-                    <button class="btn-icon-check" @click="saveEditedComment(post._id, index)">
-                      ✅
+              <div class="edit-media-section">
+                <p class="label-text">Média :</p>
+
+                <div
+                  v-if="post._attachments && !editForm.deleteExistingImage && !editForm.newFile"
+                  class="current-media-preview"
+                >
+                  <p>Image actuelle :</p>
+                  <div class="mini-preview-wrapper">
+                    <img :src="getPostImageSrc(post)" class="mini-preview" />
+                    <button class="btn-icon-cancel" @click="editForm.deleteExistingImage = true">
+                      🗑️ Supprimer
                     </button>
-                    <button class="btn-icon-cancel" @click="cancelEditComment">❌</button>
                   </div>
                 </div>
 
-                <div v-else class="comment-display-mode">
-                  <div class="comment-content">
-                    <span class="comment-text">{{ comment.text }}</span>
-                    <small class="comment-date">{{
-                      new Date(comment.date).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })
-                    }}</small>
-                  </div>
+                <div v-if="editForm.deleteExistingImage && !editForm.newFile" class="deleted-msg">
+                  ⚠️ L'image sera supprimée à la sauvegarde.
+                  <button class="btn-text" @click="editForm.deleteExistingImage = false">
+                    Annuler
+                  </button>
+                </div>
 
-                  <div class="comment-actions">
+                <div v-if="editForm.newFilePreview" class="new-media-preview">
+                  <p>Nouvelle image :</p>
+                  <div class="mini-preview-wrapper">
+                    <img :src="editForm.newFilePreview" class="mini-preview new" />
                     <button
-                      class="btn-icon-edit"
-                      @click="startEditingComment(post._id, index, comment.text)"
+                      class="btn-icon-cancel"
+                      @click="((editForm.newFile = null), (editForm.newFilePreview = null))"
                     >
-                      ✏️
-                    </button>
-                    <button class="btn-icon-delete" @click="deleteComment(post._id, index)">
-                      ×
+                      ❌
                     </button>
                   </div>
                 </div>
-              </li>
-            </ul>
 
-            <div class="input-group sm">
-              <input
-                v-model="newCommentText[post._id]"
-                class="form-input sm"
-                placeholder="Écrire un commentaire..."
-                @keyup.enter="addCommentToPost(post._id)"
-              />
-              <button class="btn btn-sm btn-primary" @click="addCommentToPost(post._id)">
-                Envoyer
+                <div class="upload-actions">
+                  <label class="btn btn-secondary-outline btn-sm">
+                    {{
+                      (post._attachments && !editForm.deleteExistingImage) || editForm.newFile
+                        ? "🔄 Remplacer l'image"
+                        : '📷 Ajouter une image'
+                    }}
+                    <input
+                      type="file"
+                      @change="handleEditFileUpload"
+                      accept="image/*"
+                      style="display: none"
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div class="edit-footer">
+              <button class="btn btn-primary" @click="savePostModifications(post)">
+                💾 Sauvegarder
+              </button>
+              <button class="btn btn-ghost" @click="cancelEditingPost">Annuler</button>
+            </div>
+          </div>
+
+          <template v-else>
+            <div class="card-header">
+              <h3>{{ post.title }}</h3>
+              <select
+                class="cat-select"
+                :value="post.attributes?.category || ''"
+                @change="changePostCategory(post, $event)"
+              >
+                <option value="" disabled>Catégorie...</option>
+                <option v-for="cat in categoriesData" :key="cat._id" :value="cat.name">
+                  {{ cat.name }}
+                </option>
+              </select>
+            </div>
+
+            <div class="card-body">
+              <div v-if="post._attachments" class="post-media">
+                <img :src="getPostImageSrc(post)" alt="Image du post" loading="lazy" />
+              </div>
+              <p>{{ post.post_content }}</p>
+            </div>
+
+            <div class="card-interactions">
+              <button
+                @click="likePost(post._id)"
+                class="btn-like"
+                :class="{ liked: post.likes > 0 }"
+              >
+                ❤️ {{ post.likes || 0 }}
               </button>
             </div>
-          </div>
 
-          <div class="card-footer">
-            <button
-              class="btn-text"
-              @click="updateDocument(post._id, { title: post.title + ' (Modifié)' })"
-            >
-              ✏️ Éditer
-            </button>
-            <button class="btn-text danger" @click="deleteDocument(post._id)">🗑️ Supprimer</button>
-          </div>
+            <div class="comments-section">
+              <h4>💬 Commentaires ({{ post.comments?.length || 0 }})</h4>
+
+              <ul class="comments-list">
+                <li v-for="(comment, index) in post.comments" :key="index" class="comment-item">
+                  <div
+                    v-if="editingCommentKey === `${post._id}-${index}`"
+                    class="comment-edit-mode"
+                  >
+                    <input
+                      v-model="editCommentInput"
+                      class="form-input sm"
+                      @keyup.enter="saveEditedComment(post._id, index)"
+                    />
+                    <div class="edit-actions">
+                      <button class="btn-icon-check" @click="saveEditedComment(post._id, index)">
+                        ✅
+                      </button>
+                      <button class="btn-icon-cancel" @click="cancelEditComment">❌</button>
+                    </div>
+                  </div>
+                  <div v-else class="comment-display-mode">
+                    <div class="comment-content">
+                      <span class="comment-text">{{ comment.text }}</span>
+                      <small class="comment-date">{{
+                        new Date(comment.date).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      }}</small>
+                    </div>
+                    <div class="comment-actions">
+                      <button
+                        class="btn-icon-edit"
+                        @click="startEditingComment(post._id, index, comment.text)"
+                      >
+                        ✏️
+                      </button>
+                      <button class="btn-icon-delete" @click="deleteComment(post._id, index)">
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              </ul>
+
+              <div class="input-group sm">
+                <input
+                  v-model="newCommentText[post._id]"
+                  class="form-input sm"
+                  placeholder="Écrire un commentaire..."
+                  @keyup.enter="addCommentToPost(post._id)"
+                />
+                <button class="btn btn-sm btn-primary" @click="addCommentToPost(post._id)">
+                  Envoyer
+                </button>
+              </div>
+            </div>
+
+            <div class="card-footer">
+              <button class="btn-text" @click="startEditingPost(post)">✏️ Éditer</button>
+              <button class="btn-text danger" @click="deleteDocument(post._id)">
+                🗑️ Supprimer
+              </button>
+            </div>
+          </template>
         </article>
       </transition-group>
     </section>
@@ -903,6 +1082,67 @@ h2 {
   flex-wrap: wrap;
 }
 
+.category-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #333;
+}
+
+.form-select {
+  flex-grow: 1;
+  padding: 8px;
+  border-radius: 6px;
+  background: #2a2a2a;
+  color: white;
+  border: 1px solid #444;
+}
+
+.divider {
+  color: #666;
+  font-size: 0.9em;
+  font-style: italic;
+}
+
+.quick-create-cat {
+  display: flex;
+  gap: 5px;
+}
+
+.quick-create-cat input {
+  width: 120px;
+}
+
+.mini-tags-list {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.mini-tag {
+  font-size: 0.7em;
+  background: #222;
+  color: #888;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid #333;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.del-tag {
+  cursor: pointer;
+  color: #666;
+}
+.del-tag:hover {
+  color: #ff4d4d;
+}
+
 .tags-container {
   display: flex;
   flex-wrap: wrap;
@@ -1009,6 +1249,48 @@ h2 {
 
 .card-interactions {
   padding: 0 20px 15px;
+}
+
+.creation-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.textarea-creation {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.creation-actions {
+  margin-top: 5px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.btn-block {
+  width: 100%;
+  padding: 12px;
+  font-size: 1rem;
+}
+
+.fake-data-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.text-muted {
+  color: #666;
+  font-size: 0.8em;
+}
+
+.btn-xs {
+  padding: 2px 8px;
+  font-size: 0.75em;
+  border: 1px solid #333;
 }
 
 .btn-like {
@@ -1240,5 +1522,101 @@ h2 {
   display: block;
   max-height: 400px;
   object-fit: contain;
+}
+
+.post-card.is-editing {
+  border-color: #42b883;
+  background: #252525;
+}
+
+.edit-mode-container {
+  padding: 20px;
+  animation: fadeIn 0.3s ease;
+}
+
+.edit-header h3 {
+  margin-bottom: 20px;
+  color: #42b883;
+  border-bottom: 1px solid #333;
+  padding-bottom: 10px;
+}
+
+.edit-body {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.edit-body label {
+  font-size: 0.9em;
+  color: #888;
+  margin-bottom: -10px;
+}
+
+.textarea-edit {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.edit-media-section {
+  background: rgba(0, 0, 0, 0.2);
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px dashed #444;
+  margin-top: 10px;
+}
+
+.label-text {
+  font-size: 0.9em;
+  color: #888;
+  margin: 0 0 10px 0;
+}
+
+.mini-preview-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #1e1e1e;
+  padding: 5px;
+  border-radius: 6px;
+  width: fit-content;
+}
+
+.mini-preview {
+  height: 60px;
+  width: auto;
+  border-radius: 4px;
+}
+.mini-preview.new {
+  border: 2px solid #42b883;
+}
+
+.deleted-msg {
+  color: #ff4d4d;
+  font-size: 0.9em;
+  background: rgba(255, 77, 77, 0.1);
+  padding: 8px;
+  border-radius: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.edit-footer {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #333;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 </style>
